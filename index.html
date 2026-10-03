@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Fish IO: Be The King - Free Online Underwater .IO Game</title>
+    <meta name="description" content="Play Fish IO: Be The King! Eat smaller fish & sushi, slice enemies with your blade, grow into a giant apex predator, and rule the ocean with the golden crown.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Main Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- UI Overlay -->
+    <div class="ui-layer">
+        
+        <!-- ===== MAIN MENU & HOME PAGE ===== -->
+        <div id="mainMenu" class="menu-screen">
+            <!-- Decorative Underwater Elements -->
+            <div class="god-rays"></div>
+            <div class="menu-bubble" style="left:5%; width:18px; height:18px; animation-duration:7s; animation-delay:0s;"></div>
+            <div class="menu-bubble" style="left:12%; width:10px; height:10px; animation-duration:9s; animation-delay:1s;"></div>
+            <div class="menu-bubble" style="left:22%; width:24px; height:24px; animation-duration:8s; animation-delay:0.5s;"></div>
+            <div class="menu-bubble" style="left:30%; width:8px; height:8px; animation-duration:11s; animation-delay:3s;"></div>
+            <div class="menu-bubble" style="left:38%; width:14px; height:14px; animation-duration:7.5s; animation-delay:2s;"></div>
+            <div class="menu-bubble" style="left:45%; width:20px; height:20px; animation-duration:10s; animation-delay:1.5s;"></div>
+            <div class="menu-bubble" style="left:52%; width:12px; height:12px; animation-duration:8.5s; animation-delay:4s;"></div>
+            <div class="menu-bubble" style="left:60%; width:16px; height:16px; animation-duration:9.5s; animation-delay:0.8s;"></div>
+            <div class="menu-bubble" style="left:68%; width:22px; height:22px; animation-duration:7s; animation-delay:3.5s;"></div>
+            <div class="menu-bubble" style="left:75%; width:10px; height:10px; animation-duration:12s; animation-delay:2.5s;"></div>
+            <div class="menu-bubble" style="left:82%; width:18px; height:18px; animation-duration:8s; animation-delay:1.2s;"></div>
+            <div class="menu-bubble" style="left:88%; width:14px; height:14px; animation-duration:10s; animation-delay:4.5s;"></div>
+            <div class="menu-bubble" style="left:93%; width:8px; height:8px; animation-duration:9s; animation-delay:0.3s;"></div>
+            <div class="menu-bubble" style="left:15%; width:6px; height:6px; animation-duration:13s; animation-delay:5s;"></div>
+            <div class="menu-bubble" style="left:55%; width:26px; height:26px; animation-duration:11s; animation-delay:2.2s;"></div>
+            <div class="menu-bubble" style="left:78%; width:12px; height:12px; animation-duration:8s; animation-delay:3.8s;"></div>
+
+            <div class="home-layout">
+                
+                <!-- LEFT SIDE: MULTIPLE LEVEL CHALLENGES ROADMAP -->
+                <div class="side-card">
+                    <div class="side-title">
+                        <span>🏆 Level Stages (1-15)</span>
+                        <span style="font-size: 0.8rem; color: #ffd700;" id="totalStarsCount">⭐ 0</span>
+                    </div>
+                    <div id="homeLevelsList" class="levels-list">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- CENTER: PLAY & CUSTOMIZATION -->
+                <div class="menu-card">
+                    <div class="logo-container">
+                        <h1 class="game-title">FISH.IO</h1>
+                        <div class="game-subtitle">👑 BE THE KING 👑</div>
+                    </div>
+
+                    <!-- Live Animated Fish Preview -->
+                    <div class="preview-container">
+                        <canvas id="previewCanvas" width="360" height="140"></canvas>
+                        <div id="previewLabel" class="preview-label">Baby Shark + Coral Blade</div>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="playerNameInput">Player Name</label>
+                        <input type="text" id="playerNameInput" maxlength="14" placeholder="SharkKing" value="SharkKing">
+                    </div>
+
+                    <!-- Map Selector -->
+                    <div class="map-selector-title">Select Ocean Arena</div>
+                    <div class="map-selector" id="mapSelector">
+                        <button class="map-btn active" onclick="setMap('coral_reef')">🌴 Coral Reef</button>
+                        <button class="map-btn" onclick="setMap('deep_abyss')">🌌 Midnight Abyss</button>
+                        <button class="map-btn" onclick="setMap('arctic_ocean')">❄️ Arctic Glacial</button>
+                        <button class="map-btn" onclick="setMap('sunken_atlantis')">🏛️ Sunken Atlantis</button>
+                    </div>
+
+                    <!-- Mode Selector -->
+                    <div class="mode-selector">
+                        <button class="mode-btn active" id="modeClassic" onclick="setGameMode('classic')">Classic .IO</button>
+                        <button class="mode-btn" id="modeFrenzy" onclick="setGameMode('frenzy')">2-Min Frenzy</button>
+                    </div>
+
+                    <button class="btn-primary" id="playBtn" onclick="startGame()">PLAY GAME 🚀</button>
+
+                    <div class="menu-actions">
+                        <button class="btn-secondary" onclick="openShop('fish')">🐟 Armory</button>
+                        <button class="btn-secondary" onclick="openShop('upgrades')">⚡ Workshop</button>
+                        <button class="btn-secondary" onclick="openHowToPlay()">❓ Help</button>
+                    </div>
+
+                    <div class="quick-stats">
+                        <span>High Score: <b id="menuHighScore">0</b></span>
+                        <span>Total Kills: <b id="menuTotalKills">0</b></span>
+                        <span>Gold: <b id="menuGold">0 💰</b></span>
+                    </div>
+                </div>
+
+                <!-- RIGHT SIDE: LUCKY HUB & REWARDS -->
+                <div class="side-card">
+                    <div class="side-title">🎁 Rewards & Events</div>
+                    
+                    <button class="event-banner-btn" onclick="openDailyRewards()">
+                        <div class="event-icon">📅</div>
+                        <div>
+                            <div class="event-title">Daily Login Gift</div>
+                            <div class="event-desc" id="dailyGiftStatus">Claim your Day 1 bonus!</div>
+                        </div>
+                    </button>
+
+                    <button class="event-banner-btn" onclick="openLuckyWheel()">
+                        <div class="event-icon">🎡</div>
+                        <div>
+                            <div class="event-title">Lucky Spin Wheel</div>
+                            <div class="event-desc">Spin for up to 5,000 Gold!</div>
+                        </div>
+                    </button>
+
+                    <button class="event-banner-btn" onclick="openShop('hats')">
+                        <div class="event-icon">🎩</div>
+                        <div>
+                            <div class="event-title">Custom Hats (12)</div>
+                            <div class="event-desc">Wear crowns, helmets & halos!</div>
+                        </div>
+                    </button>
+
+                    <button class="event-banner-btn" onclick="openShop('weapons')">
+                        <div class="event-icon">🗡️</div>
+                        <div>
+                            <div class="event-title">Weapons Armory (14)</div>
+                            <div class="event-desc">Excalibur, Lasers & Chainsaws!</div>
+                        </div>
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ===== IN-GAME HUD OVERLAY ===== -->
+        <div id="hudOverlay" class="hud-layer hidden">
+            <!-- Top Left: Stats -->
+            <div class="hud-top-left">
+                <button class="hud-pause-btn" id="hudPauseBtn" onclick="togglePauseGame()" title="Pause Game (ESC / P)">⏸️</button>
+                <div class="hud-stat-pill">
+                    <span class="icon">⭐</span>
+                    <span id="hudLevel">Lv. 1</span>
+                </div>
+                <div class="hud-stat-pill">
+                    <span class="icon">🎯</span>
+                    <span>Kills: <b id="hudKills">0</b></span>
+                </div>
+                <div class="hud-stat-pill">
+                    <span class="icon">🏆</span>
+                    <span>Score: <b id="hudScore">0</b></span>
+                </div>
+                <div class="hud-stat-pill">
+                    <span class="icon">💰</span>
+                    <span id="hudGold">0 💰</span>
+                </div>
+            </div>
+
+            <!-- Top Center: Challenge Goal, Timer & Kill Banner -->
+            <div class="hud-top-center">
+                <div id="hudChallengeGoal" class="hud-goal-banner hidden">
+                    🎯 STAGE 1: Slice 3 Fish (0/3)
+                </div>
+                <div id="hudTimerContainer" class="timer-badge hidden">
+                    ⏱️ <span id="hudTimer">120s</span>
+                </div>
+                <div id="killBanner" class="kill-banner">DOUBLE KILL! 🔥</div>
+            </div>
+
+            <!-- Top Right: Leaderboard -->
+            <div class="hud-top-right">
+                <div class="lb-header">
+                    <span>👑 Leaderboard</span>
+                </div>
+                <div id="leaderboardList" class="lb-list"></div>
+            </div>
+
+            <!-- Bottom Center: XP & Boost Gauges -->
+            <div class="hud-bottom-center">
+                <div class="gauge-group">
+                    <div class="gauge-label">
+                        <span>XP Progress</span>
+                        <span>Level Up</span>
+                    </div>
+                    <div class="gauge-bar">
+                        <div id="xpFill" class="gauge-fill xp-fill"></div>
+                    </div>
+                </div>
+
+                <div class="gauge-group">
+                    <div class="gauge-label">
+                        <span>⚡ Turbo Boost (Space / Shift / Click)</span>
+                        <span>Stamina</span>
+                    </div>
+                    <div class="gauge-bar">
+                        <div id="staminaFill" class="gauge-fill stamina-fill"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Right: Minimap -->
+            <div class="hud-bottom-right">
+                <canvas id="minimapCanvas" width="130" height="130"></canvas>
+            </div>
+
+            <!-- Mobile Touch Controls -->
+            <div id="touchZone" class="touch-zone">DRAG TO STEER</div>
+            <div id="touchBoostBtn" class="touch-boost-btn">BOOST</div>
+        </div>
+
+        <!-- ===== SHOP / LOCKER / WORKSHOP MODAL ===== -->
+        <div id="shopModal" class="modal-backdrop hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <div class="modal-title">🏪 Ocean Armory & Workshop</div>
+                    <div style="font-weight: 900; color: #FFD740; text-shadow: 0 0 8px rgba(255,215,0,0.3);" id="shopGoldDisplay">0 💰</div>
+                    <button class="modal-close" onclick="closeShop()">&times;</button>
+                </div>
+
+                <div class="shop-tabs">
+                    <button class="shop-tab active" id="tabFish" onclick="switchShopTab('fish')">🐟 Fish Species (16)</button>
+                    <button class="shop-tab" id="tabWeapons" onclick="switchShopTab('weapons')">🗡️ Weapons (14)</button>
+                    <button class="shop-tab" id="tabHats" onclick="switchShopTab('hats')">🎩 Hats (12)</button>
+                    <button class="shop-tab" id="tabUpgrades" onclick="switchShopTab('upgrades')">⚡ Workshop Upgrades</button>
+                </div>
+
+                <div id="shopContent" class="shop-content">
+                    <!-- Rendered via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== DAILY REWARDS CALENDAR MODAL ===== -->
+        <div id="dailyRewardsModal" class="modal-backdrop hidden">
+            <div class="modal-card" style="max-width: 640px;">
+                <div class="modal-header">
+                    <div class="modal-title">📅 7-Day Login Rewards</div>
+                    <button class="modal-close" onclick="closeDailyRewards()">&times;</button>
+                </div>
+                <div class="calendar-grid" id="calendarGrid"></div>
+                <div style="padding: 18px 24px; text-align: center;">
+                    <button class="btn-primary" id="claimDailyBtn" onclick="claimDailyReward()">CLAIM TODAY'S REWARD 🎁</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== LUCKY WHEEL MODAL ===== -->
+        <div id="luckyWheelModal" class="modal-backdrop hidden">
+            <div class="modal-card" style="max-width: 480px; position: relative;">
+                <div class="modal-header">
+                    <div class="modal-title">🎡 Lucky Fortune Wheel</div>
+                    <button class="modal-close" onclick="closeLuckyWheel()">&times;</button>
+                </div>
+
+                <!-- Current Balance Display -->
+                <div style="display: flex; justify-content: center; align-items: center; gap: 8px; background: rgba(0, 0, 0, 0.45); border: 2px solid #ffd700; border-radius: 24px; padding: 6px 20px; margin: 0 auto 10px auto; width: fit-content;">
+                    <span style="font-size: 0.85rem; color: rgba(255,255,255,0.8); font-weight: 700; letter-spacing: 0.5px;">YOUR BALANCE:</span>
+                    <span id="wheelCurrentGold" style="font-size: 1.25rem; font-weight: 900; color: #ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.5);">0 💰</span>
+                </div>
+
+                <div class="wheel-container">
+                    <div class="wheel-wrapper">
+                        <div class="wheel-pointer"></div>
+                        <canvas id="wheelCanvas" width="280" height="280"></canvas>
+                    </div>
+                    <button class="btn-primary" id="spinWheelBtn" onclick="spinWheel()" style="width: 85%; font-size: 1.1rem; padding: 14px 20px;">SPIN WHEEL 🌀</button>
+                    <div id="wheelStatus" style="font-size: 0.88rem; color: rgba(255,255,255,0.7); font-weight: 700;">Free Daily Spin Available!</div>
+                </div>
+
+                <!-- In-Modal Winner Reward Banner -->
+                <div id="wheelRewardBanner" class="hidden" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(5, 20, 40, 0.96); border: 3px solid #ffd700; border-radius: 20px; padding: 24px 30px; text-align: center; box-shadow: 0 0 40px rgba(255, 215, 0, 0.7); z-index: 100; min-width: 290px;">
+                    <div style="font-size: 1.6rem; font-weight: 900; color: #ffffff;">🎉 CONGRATULATIONS! 🎉</div>
+                    <div id="wheelRewardText" style="font-size: 2.2rem; font-weight: 900; color: #ffd700; margin: 12px 0; text-shadow: 0 0 14px rgba(255,215,0,0.6);">+500 💰</div>
+                    <button class="btn-primary" onclick="dismissWheelReward()" style="padding: 10px 24px; font-size: 1rem; width: 100%;">COLLECT REWARD ⭐</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== STAGE CLEAR MODAL ===== -->
+        <div id="stageClearModal" class="modal-backdrop hidden">
+            <div class="modal-card stageclear-card">
+                <div id="stageClearTitle" class="stageclear-title">STAGE CLEAR! 🎉</div>
+                <div id="stageClearStars" class="stageclear-stars">⭐⭐⭐</div>
+
+                <div style="background: rgba(0, 0, 0, 0.3); border-radius: 16px; padding: 18px; border: 2px solid rgba(255,255,255,0.1);">
+                    <div style="font-size: 0.78rem; color: rgba(255,255,255,0.6); text-transform: uppercase; font-weight: 800; letter-spacing: 1px;">Stage Bounty</div>
+                    <div id="stageClearReward" style="font-size: 2rem; font-weight: 900; color: #FFD740; text-shadow: 0 0 12px rgba(255,215,0,0.5);">+200 💰</div>
+                </div>
+
+                <div style="display: flex; gap: 12px; width: 100%;">
+                    <button class="btn-primary" style="flex: 1;" onclick="playNextStage()">NEXT STAGE ⏩</button>
+                    <button class="btn-secondary" style="flex: 1;" onclick="returnToMenu()">MAIN MENU 🏠</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== HOW TO PLAY MODAL ===== -->
+        <div id="howToPlayModal" class="modal-backdrop hidden">
+            <div class="modal-card" style="max-width: 540px;">
+                <div class="modal-header">
+                    <div class="modal-title">❓ How To Play</div>
+                    <button class="modal-close" onclick="closeHowToPlay()">&times;</button>
+                </div>
+                <div style="padding: 24px; display: flex; flex-direction: column; gap: 14px; line-height: 1.7; font-size: 0.95rem; color: rgba(255,255,255,0.85);">
+                    <p>🎮 <b>Movement & Controls:</b> Steer with your <b>Mouse Cursor</b>, or use <b>WASD / Arrow Keys</b> (or touch joystick on mobile).</p>
+                    <p>⚡ <b>Turbo Boost:</b> Hold <b>Spacebar</b>, <b>Shift</b>, or <b>Left Click</b> (or touch BOOST button) for an explosive speed dash attack!</p>
+                    <p>🗡️ <b>Slice & Survive:</b> Use your snout-mounted sword to stab opponents from behind or flank their sides to slice them into sushi!</p>
+                    <p>🍣 <b>Eat & Grow:</b> Swallow floating sushi and defeated fish meat to level up, increase your size, and lengthen your sword reach.</p>
+                    <p>⭐ <b>Power-ups & Treasure:</b> Collect Bubble Shields (🛡️), Magnets (🧲), Speed Stars (⭐), and crack open Sunken Chests (💎) for massive gold!</p>
+                    <p>⚔️ <b>Blade Parry:</b> If two blades clash directly head-to-head, they bounce off with a parry spark!</p>
+                    <p>👑 <b>Level Challenges & Bosses:</b> Progress through 15 stages to slay the Giant Megalodon and the Golden Dragon Leviathan!</p>
+                    <button class="btn-primary" onclick="closeHowToPlay()" style="margin-top: 10px;">GOT IT, LET'S PLAY!</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== PAUSE SCREEN MODAL ===== -->
+        <div id="pauseModal" class="modal-backdrop hidden">
+            <div class="modal-card" style="max-width: 440px; text-align: center; padding: 28px;">
+                <div style="font-size: 2.2rem; font-weight: 900; color: #42A5F5; margin-bottom: 6px;">GAME PAUSED ⏸️</div>
+                <div style="font-size: 0.92rem; color: rgba(255,255,255,0.7); margin-bottom: 24px; font-weight: 600;">Match suspended. Press <b>ESC</b> or <b>P</b> to resume.</div>
+                
+                <div style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+                    <button class="btn-primary" onclick="resumeGame()" style="font-size: 1.15rem; padding: 14px 20px;">RESUME BATTLE ▶️</button>
+                    <button class="btn-secondary" onclick="openHowToPlay()" style="padding: 12px 20px;">HOW TO PLAY ❓</button>
+                    <button class="btn-secondary" onclick="returnToMenuFromPause()" style="padding: 12px 20px; background: rgba(239, 83, 80, 0.2); border-color: rgba(239, 83, 80, 0.5); color: #EF5350;">QUIT TO MENU 🏠</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== GAME OVER MODAL ===== -->
+        <div id="gameOverModal" class="modal-backdrop hidden">
+            <div class="modal-card gameover-card">
+                <div id="gameOverTitle" class="gameover-title">YOU WERE SLICED!</div>
+
+                <div class="gameover-stats">
+                    <div class="go-stat-box">
+                        <span class="go-stat-label">Final Score</span>
+                        <span id="finalScore" class="go-stat-val">0</span>
+                    </div>
+                    <div class="go-stat-box">
+                        <span class="go-stat-label">Fish Sliced</span>
+                        <span id="finalKills" class="go-stat-val">0</span>
+                    </div>
+                    <div class="go-stat-box">
+                        <span class="go-stat-label">Level Reached</span>
+                        <span id="finalLevel" class="go-stat-val">1</span>
+                    </div>
+                    <div class="go-stat-box">
+                        <span class="go-stat-label">Gold Earned</span>
+                        <span id="finalGold" class="go-stat-val gold">+0</span>
+                    </div>
+                    <div class="go-stat-box" style="grid-column: span 2;">
+                        <span class="go-stat-label">King Crown Time</span>
+                        <span id="finalKingTime" class="go-stat-val" style="color: #ffd700;">0s</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 12px; width: 100%;">
+                    <button class="btn-primary" style="flex: 1;" onclick="restartGame()">PLAY AGAIN 🔄</button>
+                    <button class="btn-secondary" style="flex: 1;" onclick="returnToMenu()">MAIN MENU 🏠</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Scripts -->
+    <script src="src/audio.js"></script>
+    <script src="src/particles.js"></script>
+    <script src="src/food.js"></script>
+    <script src="src/shop.js"></script>
+    <script src="src/entities.js"></script>
+    <script src="src/ai.js"></script>
+    <script src="src/game.js"></script>
+
+    <!-- Game Initialization & UI Binding -->
+    <script>
+        let game = null;
+        let selectedMode = 'classic';
+        let currentShopTab = 'fish';
+        let previewFish = null;
+        let previewCtx = null;
+        let wheelAngle = 0;
+        let isWheelSpinning = false;
+        let activeLevelStage = 1;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            game = new GameEngine();
+            updateMenuStats();
+            highlightSelectedMap();
+            renderLevelChallenges();
+            initPreview();
+            drawWheel();
+
+            const nameInput = document.getElementById('playerNameInput');
+            if (nameInput) {
+                nameInput.value = window.shopManager.playerName || 'SharkKing';
+                nameInput.addEventListener('input', (e) => {
+                    window.shopManager.playerName = e.target.value || 'Player';
+                    window.shopManager.save();
+                });
+            }
+        });
+
+        // 1. Live Animated Fish Preview
+        function initPreview() {
+            const canvas = document.getElementById('previewCanvas');
+            if (!canvas) return;
+            previewCtx = canvas.getContext('2d');
+            updatePreviewFish();
+            animatePreview();
+        }
+
+        function updatePreviewFish() {
+            const sm = window.shopManager;
+            previewFish = new Fish(180, 70, sm.playerName, sm.selectedFish, sm.selectedWeapon, false, sm.selectedHat);
+            previewFish.radius = 28;
+            previewFish.bladeLength = 46;
+            const fishName = window.FISH_SKINS[sm.selectedFish]?.name || 'Fish';
+            const wepName = window.WEAPON_SKINS[sm.selectedWeapon]?.name || 'Blade';
+            const label = document.getElementById('previewLabel');
+            if (label) label.textContent = `${fishName} + ${wepName}`;
+        }
+
+        function animatePreview() {
+            if (!previewCtx) return;
+
+            // Only render preview when menu is visible to save CPU/GPU cycles
+            if (game && game.gameState === 'playing') {
+                requestAnimationFrame(animatePreview);
+                return;
+            }
+
+            previewCtx.clearRect(0, 0, 360, 140);
+
+            if (previewFish) {
+                const t = Date.now() * 0.002;
+                previewFish.targetAngle = Math.sin(t) * 0.3;
+                previewFish.update(1, 4000, 4000);
+
+                const fakeCamera = {
+                    zoom: 1.0,
+                    worldToScreen: (wx, wy) => ({ x: wx - 180 + 180, y: wy - 70 + 70 }),
+                    isVisible: () => true
+                };
+                previewFish.render(previewCtx, fakeCamera);
+            }
+
+            requestAnimationFrame(animatePreview);
+        }
+
+        // 2. Home Dashboard Level Challenges List (1-15)
+        function renderLevelChallenges() {
+            const list = document.getElementById('homeLevelsList');
+            if (!list) return;
+            const sm = window.shopManager;
+            list.innerHTML = '';
+
+            let totalStars = 0;
+
+            window.LEVEL_CHALLENGES.forEach(stage => {
+                const isUnlocked = stage.level <= sm.unlockedChallengeLevel;
+                const isCompleted = sm.completedChallengeLevels.includes(stage.level);
+                const stars = sm.levelStars[stage.level] || 0;
+                totalStars += stars;
+
+                let starStr = '';
+                if (stars === 3) starStr = '⭐⭐⭐';
+                else if (stars === 2) starStr = '⭐⭐';
+                else if (stars === 1) starStr = '⭐';
+                else starStr = isUnlocked ? '☆☆☆' : '🔒';
+
+                const card = document.createElement('div');
+                card.className = `level-card ${stage.isBoss ? 'boss' : ''} ${!isUnlocked ? 'locked' : ''}`;
+                card.innerHTML = `
+                    <div class="level-info">
+                        <div class="level-title-row">
+                            <span style="background:${stage.isBoss ? '#EF5350' : isCompleted ? '#66BB6A' : '#42A5F5'}; color:#fff; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:900; flex-shrink:0;">${stage.level}</span>
+                            <span>${stage.title}</span>
+                            ${stage.isBoss ? '<span style="color:#EF5350; font-size:0.7rem; font-weight:900;">💀 BOSS</span>' : ''}
+                        </div>
+                        <div class="level-desc-txt">${stage.desc}</div>
+                        <div class="level-stars-display">${starStr} | +${stage.reward} 💰</div>
+                    </div>
+                    ${isUnlocked 
+                        ? `<button class="btn-play-level" onclick="startChallengeLevel(${stage.level})">PLAY ⚔️</button>`
+                        : `<span style="font-size:1.4rem; opacity:0.5;">🔒</span>`
+                    }
+                `;
+                list.appendChild(card);
+            });
+
+            document.getElementById('totalStarsCount').textContent = `⭐ ${totalStars}`;
+        }
+
+        function startChallengeLevel(levelNum) {
+            activeLevelStage = levelNum;
+            const nameInput = document.getElementById('playerNameInput');
+            if (nameInput && nameInput.value.trim()) {
+                window.shopManager.playerName = nameInput.value.trim();
+                window.shopManager.save();
+            }
+            game.startLevelChallenge(levelNum);
+        }
+
+        function playNextStage() {
+            document.getElementById('stageClearModal').classList.add('hidden');
+            const nextStage = activeLevelStage + 1;
+            if (nextStage <= window.LEVEL_CHALLENGES.length) {
+                startChallengeLevel(nextStage);
+            } else {
+                returnToMenu();
+            }
+        }
+
+        function restartGame() {
+            if (game.gameMode === 'challenge') {
+                startChallengeLevel(activeLevelStage);
+            } else {
+                startGame();
+            }
+        }
+
+        // 3. Daily Rewards Modal
+        function openDailyRewards() {
+            document.getElementById('dailyRewardsModal').classList.remove('hidden');
+            renderDailyCalendar();
+        }
+
+        function closeDailyRewards() {
+            document.getElementById('dailyRewardsModal').classList.add('hidden');
+            updateMenuStats();
+        }
+
+        function renderDailyCalendar() {
+            const grid = document.getElementById('calendarGrid');
+            const sm = window.shopManager;
+            grid.innerHTML = '';
+
+            window.DAILY_REWARDS.forEach(r => {
+                const isToday = (r.day === sm.dailyLoginDay);
+                const isPast = (r.day < sm.dailyLoginDay) || (isToday && sm.hasClaimedDailyToday);
+
+                const card = document.createElement('div');
+                card.className = `calendar-day-card ${isToday && !sm.hasClaimedDailyToday ? 'active' : ''} ${isPast ? 'claimed' : ''}`;
+                card.innerHTML = `
+                    <div style="font-size:0.75rem; font-weight:800; color:rgba(255,255,255,0.6); letter-spacing:0.5px;">DAY ${r.day}</div>
+                    <div style="font-size:1.8rem;">${r.day === 7 ? '👑' : '💰'}</div>
+                    <div style="font-size:0.82rem; font-weight:900; color:#FFD740;">${r.label}</div>
+                    <div style="font-size:0.68rem; font-weight:700; color:#66BB6A;">${isPast ? 'CLAIMED ✓' : isToday ? '🔥 TODAY' : '🔒 LOCKED'}</div>
+                `;
+                grid.appendChild(card);
+            });
+
+            const claimBtn = document.getElementById('claimDailyBtn');
+            if (sm.hasClaimedDailyToday) {
+                claimBtn.disabled = true;
+                claimBtn.textContent = 'ALREADY CLAIMED TODAY ✅';
+                claimBtn.style.opacity = '0.6';
+            } else {
+                claimBtn.disabled = false;
+                claimBtn.textContent = "CLAIM TODAY'S REWARD 🎁";
+                claimBtn.style.opacity = '1';
+            }
+        }
+
+        function claimDailyReward() {
+            const reward = window.shopManager.claimDailyReward();
+            if (reward) {
+                renderDailyCalendar();
+                updateMenuStats();
+                window.soundEngine.playJackpot();
+            }
+        }
+
+        // 4. Lucky Spin Fortune Wheel
+        function openLuckyWheel() {
+            document.getElementById('luckyWheelModal').classList.remove('hidden');
+            const banner = document.getElementById('wheelRewardBanner');
+            if (banner) banner.classList.add('hidden');
+            updateWheelUI();
+            drawWheel();
+        }
+
+        function closeLuckyWheel() {
+            document.getElementById('luckyWheelModal').classList.add('hidden');
+            updateMenuStats();
+        }
+
+        function updateWheelUI() {
+            const sm = window.shopManager;
+            const goldEl = document.getElementById('wheelCurrentGold');
+            if (goldEl) goldEl.textContent = `${sm.gold} 💰`;
+
+            const btn = document.getElementById('spinWheelBtn');
+            const status = document.getElementById('wheelStatus');
+            const isFree = sm.freeWheelSpins > 0;
+
+            if (btn && !isWheelSpinning) {
+                if (isFree) {
+                    btn.textContent = 'FREE DAILY SPIN 🌀';
+                    btn.style.background = 'linear-gradient(135deg, #00cec9, #0984e3)';
+                    btn.disabled = false;
+                } else {
+                    btn.textContent = 'SPIN (100 💰)';
+                    btn.style.background = 'linear-gradient(135deg, #ff9f43, #ee5253)';
+                    btn.disabled = sm.gold < 100;
+                }
+            }
+
+            if (status) {
+                if (isFree) {
+                    status.textContent = '✨ 1 Free Daily Spin Available!';
+                    status.style.color = '#00f7ff';
+                } else if (sm.gold >= 100) {
+                    status.textContent = '💎 100 Gold per additional spin';
+                    status.style.color = 'rgba(255,255,255,0.7)';
+                } else {
+                    status.textContent = '❌ Need 100 Gold to spin (Play matches to earn gold)';
+                    status.style.color = '#ff4757';
+                }
+            }
+        }
+
+        function dismissWheelReward() {
+            const banner = document.getElementById('wheelRewardBanner');
+            if (banner) banner.classList.add('hidden');
+            updateWheelUI();
+        }
+
+        function drawWheel() {
+            const canvas = document.getElementById('wheelCanvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const w = canvas.width;
+            const h = canvas.height;
+            const cx = w / 2;
+            const cy = h / 2;
+            const r = w / 2 - 8;
+            const sectors = window.WHEEL_SECTORS;
+            const arc = (Math.PI * 2) / sectors.length;
+
+            ctx.clearRect(0, 0, w, h);
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(wheelAngle);
+
+            for (let i = 0; i < sectors.length; i++) {
+                const a = i * arc;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.arc(0, 0, r, a, a + arc);
+                ctx.fillStyle = sectors[i].color;
+                ctx.fill();
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.save();
+                ctx.rotate(a + arc / 2);
+                ctx.textAlign = 'right';
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 13px sans-serif';
+                ctx.shadowColor = 'rgba(0,0,0,0.8)';
+                ctx.shadowBlur = 4;
+                ctx.fillText(sectors[i].label, r - 15, 5);
+                ctx.restore();
+            }
+
+            // Center Pin
+            ctx.beginPath();
+            ctx.arc(0, 0, 18, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff';
+            ctx.fill();
+            ctx.strokeStyle = '#ffd700';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function spinWheel() {
+            if (isWheelSpinning) return;
+            const sm = window.shopManager;
+            const isFree = sm.freeWheelSpins > 0;
+            if (!isFree && sm.gold < 100) {
+                alert("You need 100 Gold for additional spins!");
+                return;
+            }
+
+            if (isFree) sm.freeWheelSpins--;
+            else sm.gold -= 100;
+            sm.save();
+            updateMenuStats();
+            updateWheelUI();
+
+            isWheelSpinning = true;
+            const btn = document.getElementById('spinWheelBtn');
+            btn.disabled = true;
+
+            const extraSpins = 5 + Math.floor(Math.random() * 4);
+            const targetSector = Math.floor(Math.random() * window.WHEEL_SECTORS.length);
+            const arc = (Math.PI * 2) / window.WHEEL_SECTORS.length;
+            // Align top pointer (-PI/2) with target sector center
+            const targetAngle = extraSpins * Math.PI * 2 - Math.PI / 2 - (targetSector + 0.5) * arc;
+
+            const startTime = performance.now();
+            const duration = 4000;
+            const startAngle = wheelAngle;
+
+            function animateSpin(now) {
+                const elapsed = now - startTime;
+                const progress = Math.min(1, elapsed / duration);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+
+                wheelAngle = startAngle + (targetAngle - startAngle) * easeOut;
+                drawWheel();
+
+                if (Math.floor(wheelAngle * 5) % 3 === 0) {
+                    window.soundEngine.playWheelTick();
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSpin);
+                } else {
+                    isWheelSpinning = false;
+                    const prize = window.WHEEL_SECTORS[targetSector];
+                    sm.addGold(prize.gold);
+                    updateMenuStats();
+                    updateWheelUI();
+                    window.soundEngine.playJackpot();
+
+                    const banner = document.getElementById('wheelRewardBanner');
+                    const text = document.getElementById('wheelRewardText');
+                    if (banner && text) {
+                        text.textContent = `+${prize.label}`;
+                        banner.classList.remove('hidden');
+                    }
+                }
+            }
+
+            requestAnimationFrame(animateSpin);
+        }
+
+        function updateMenuStats() {
+            const sm = window.shopManager;
+            document.getElementById('menuHighScore').textContent = sm.highScore;
+            document.getElementById('menuTotalKills').textContent = sm.totalKills;
+            document.getElementById('menuGold').textContent = `${sm.gold} 💰`;
+            document.getElementById('shopGoldDisplay').textContent = `${sm.gold} 💰`;
+            const giftDesc = document.getElementById('dailyGiftStatus');
+            if (giftDesc) giftDesc.textContent = sm.hasClaimedDailyToday ? 'Claimed for today ✅' : `Day ${sm.dailyLoginDay} Ready! 🎁`;
+        }
+
+        function setGameMode(mode) {
+            selectedMode = mode;
+            document.getElementById('modeClassic').classList.toggle('active', mode === 'classic');
+            document.getElementById('modeFrenzy').classList.toggle('active', mode === 'frenzy');
+        }
+
+        function setMap(mapId) {
+            window.shopManager.selectMap(mapId);
+            highlightSelectedMap();
+            window.soundEngine.playClick();
+        }
+
+        function highlightSelectedMap() {
+            const curMap = window.shopManager.selectedMap || 'coral_reef';
+            const btns = document.querySelectorAll('#mapSelector .map-btn');
+            btns.forEach(b => {
+                b.classList.toggle('active', b.getAttribute('onclick').includes(curMap));
+            });
+        }
+
+        function startGame() {
+            if (!game) game = new GameEngine();
+            const nameInput = document.getElementById('playerNameInput');
+            if (nameInput && nameInput.value.trim()) {
+                window.shopManager.playerName = nameInput.value.trim();
+                window.shopManager.save();
+            }
+            game.startMatch(selectedMode);
+        }
+
+        function togglePauseGame() {
+            if (game) game.togglePause();
+        }
+
+        function resumeGame() {
+            if (game) game.resumeGame();
+        }
+
+        function returnToMenuFromPause() {
+            if (game) {
+                game.resumeGame();
+                game.gameState = 'menu';
+            }
+            const pauseModal = document.getElementById('pauseModal');
+            if (pauseModal) pauseModal.classList.add('hidden');
+            returnToMenu();
+        }
+
+        function returnToMenu() {
+            document.getElementById('gameOverModal').classList.add('hidden');
+            document.getElementById('stageClearModal').classList.add('hidden');
+            const pauseModal = document.getElementById('pauseModal');
+            if (pauseModal) pauseModal.classList.add('hidden');
+            document.getElementById('hudOverlay').classList.add('hidden');
+            document.getElementById('mainMenu').classList.remove('hidden');
+            if (game) game.gameState = 'menu';
+            updateMenuStats();
+            highlightSelectedMap();
+            renderLevelChallenges();
+            updatePreviewFish();
+        }
+
+        function openShop(tab = 'fish') {
+            document.getElementById('shopModal').classList.remove('hidden');
+            switchShopTab(tab);
+            updateMenuStats();
+        }
+
+        function closeShop() {
+            document.getElementById('shopModal').classList.add('hidden');
+            updateMenuStats();
+            updatePreviewFish();
+        }
+
+        function switchShopTab(tab) {
+            currentShopTab = tab;
+            const tabs = ['fish', 'weapons', 'hats', 'upgrades'];
+            tabs.forEach(t => {
+                const el = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+                if (el) el.classList.toggle('active', t === tab);
+            });
+            renderShopItems();
+        }
+
+        const SHOP_WEAPON_ICONS = {
+            coral_dagger: '🗡️',
+            wooden_spear: '🔱',
+            iron_cutlass: '⚔️',
+            ninja_katana: '🗡️',
+            trident: '🔱',
+            pirate_sabre: '🏴‍☠️',
+            laser_saber: '✨',
+            saw_blade: '🪚',
+            ice_crystal: '❄️',
+            volcano_magma: '🔥',
+            excalibur: '👑',
+            thunder_spear: '⚡',
+            chainsaw: '⛓️',
+            dragon_horn: '🐉'
+        };
+
+        const SHOP_FISH_ICONS = {
+            baby_shark: '🦈',
+            clownfish: '🐠',
+            piranha: '🐟',
+            pufferfish: '🐡',
+            anglerfish: '🏮',
+            swordfish: '🗡️',
+            hammerhead: '🔨',
+            thresher_shark: '🌊',
+            tiger_shark: '🐅',
+            orca: '🐋',
+            great_white: '🦈',
+            narwhal: '🦄',
+            sea_turtle: '🐢',
+            megalodon: '👑',
+            cyber_shark: '🤖',
+            golden_leviathan: '🐉',
+            manta_ray: '🦅',
+            electric_eel: '⚡',
+            sawshark: '🪚',
+            kraken_squid: '🐙',
+            ghost_shark: '👻',
+            phoenix_fish: '🔥',
+            sunfish_mola: '🛡️',
+            deep_goblin: '👹'
+        };
+
+        const SHOP_HAT_ICONS = {
+            none: '❌',
+            viking_helmet: '🪖',
+            pirate_hat: '🏴‍☠️',
+            chef_hat: '🧑‍🍳',
+            halo: '😇',
+            devil_horns: '😈',
+            mini_crown: '👑',
+            party_hat: '🎉',
+            cat_ears: '🐱'
+        };
+
+        function renderShopItems() {
+            const container = document.getElementById('shopContent');
+            const sm = window.shopManager;
+            container.innerHTML = '';
+
+            if (currentShopTab === 'fish') {
+                Object.values(window.FISH_SKINS).forEach(item => {
+                    const isUnlocked = sm.unlockedFish.includes(item.id);
+                    const isEquipped = (sm.selectedFish === item.id);
+                    const canAfford = (sm.gold >= item.cost);
+                    const icon = SHOP_FISH_ICONS[item.id] || '🐟';
+
+                    const card = document.createElement('div');
+                    card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
+                    card.innerHTML = `
+                        <div class="item-preview" style="border: 2px solid ${item.finColor}; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(0,0,0,0.25);">
+                            <span style="font-size: 1.8rem;">${icon}</span>
+                            <div style="width: 34px; height: 20px; border-radius: 50%; background: ${item.primaryColor}; border: 2px solid ${item.secondaryColor};"></div>
+                        </div>
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-desc">${item.desc}</div>
+                        <div class="item-stats">⚡ Spd: ${item.stats.speed}x | 🔄 Turn: ${item.stats.turn}x | 💥 Boost: ${item.stats.boost}x</div>
+                        ${isEquipped 
+                            ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
+                            : isUnlocked 
+                                ? `<button class="item-btn btn-equip" onclick="equipFish('${item.id}')">EQUIP</button>`
+                                : `<button class="item-btn btn-buy" onclick="buyFish('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`
+                        }
+                    `;
+                    container.appendChild(card);
+                });
+            } else if (currentShopTab === 'weapons') {
+                Object.values(window.WEAPON_SKINS).forEach(item => {
+                    const isUnlocked = sm.unlockedWeapons.includes(item.id);
+                    const isEquipped = (sm.selectedWeapon === item.id);
+                    const canAfford = (sm.gold >= item.cost);
+                    const icon = SHOP_WEAPON_ICONS[item.id] || '🗡️';
+
+                    const card = document.createElement('div');
+                    card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
+                    card.innerHTML = `
+                        <div class="item-preview" style="border: 2px solid ${item.glowColor}; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.25);">
+                            <span style="font-size: 1.8rem;">${icon}</span>
+                            <div style="width: 48px; height: 8px; border-radius: 4px; background: ${item.bladeColor}; box-shadow: 0 0 12px ${item.glowColor}; border: 1px solid rgba(255,255,255,0.4);"></div>
+                        </div>
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-desc">${item.desc}</div>
+                        <div class="item-stats">🗡️ Reach: ${item.lengthMult}x | 📐 Width: ${item.widthMult}x</div>
+                        ${isEquipped 
+                            ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
+                            : isUnlocked 
+                                ? `<button class="item-btn btn-equip" onclick="equipWeapon('${item.id}')">EQUIP</button>`
+                                : `<button class="item-btn btn-buy" onclick="buyWeapon('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`
+                        }
+                    `;
+                    container.appendChild(card);
+                });
+            } else if (currentShopTab === 'hats') {
+                Object.values(window.FISH_HATS).forEach(item => {
+                    const isUnlocked = sm.unlockedHats.includes(item.id);
+                    const isEquipped = (sm.selectedHat === item.id);
+                    const canAfford = (sm.gold >= item.cost);
+                    const icon = SHOP_HAT_ICONS[item.id] || '🎩';
+
+                    const card = document.createElement('div');
+                    card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
+                    card.innerHTML = `
+                        <div class="item-preview" style="display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.25);">
+                            <span style="font-size: 2.2rem;">${icon}</span>
+                        </div>
+                        <div class="item-name">${item.name}</div>
+                        <div class="item-desc">${item.desc}</div>
+                        <div class="item-stats">Cosmetic Accessory</div>
+                        ${isEquipped 
+                            ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
+                            : isUnlocked 
+                                ? `<button class="item-btn btn-equip" onclick="equipHat('${item.id}')">EQUIP</button>`
+                                : `<button class="item-btn btn-buy" onclick="buyHat('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`
+                        }
+                    `;
+                    container.appendChild(card);
+                });
+            } else if (currentShopTab === 'upgrades') {
+                Object.values(window.WORKSHOP_UPGRADES).forEach(upg => {
+                    const curLvl = sm.upgrades[upg.id] || 0;
+                    const isMax = (curLvl >= upg.maxLevel);
+                    const cost = isMax ? 0 : Math.round(upg.baseCost * Math.pow(upg.costMult, curLvl));
+                    const canAfford = (sm.gold >= cost);
+
+                    const card = document.createElement('div');
+                    card.className = `shop-item-card`;
+                    card.innerHTML = `
+                        <div class="item-preview" style="display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.25);">
+                            <span style="font-size: 2.2rem;">⚡</span>
+                        </div>
+                        <div class="item-name">${upg.name}</div>
+                        <div class="item-desc">${upg.desc}</div>
+                        <div class="item-stats">Current Level: ${curLvl} / ${upg.maxLevel}</div>
+                        ${isMax 
+                            ? `<button class="item-btn btn-equipped">MAX LEVEL</button>`
+                            : `<button class="item-btn btn-buy" onclick="buyWorkshopUpgrade('${upg.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>UPGRADE (${cost} 💰)</button>`
+                        }
+                    `;
+                    container.appendChild(card);
+                });
+            }
+        }
+
+        function equipFish(id) {
+            window.shopManager.selectFish(id);
+            renderShopItems();
+            updatePreviewFish();
+            window.soundEngine.playClick();
+        }
+
+        function buyFish(id) {
+            if (window.shopManager.unlockFish(id)) {
+                renderShopItems();
+                updateMenuStats();
+                updatePreviewFish();
+                window.soundEngine.playLevelUp();
+            } else {
+                alert("Not enough gold! Complete stage challenges or spin the wheel to earn more.");
+            }
+        }
+
+        function equipWeapon(id) {
+            window.shopManager.selectWeapon(id);
+            renderShopItems();
+            updatePreviewFish();
+            window.soundEngine.playClick();
+        }
+
+        function buyWeapon(id) {
+            if (window.shopManager.unlockWeapon(id)) {
+                renderShopItems();
+                updateMenuStats();
+                updatePreviewFish();
+                window.soundEngine.playLevelUp();
+            } else {
+                alert("Not enough gold! Complete stage challenges or spin the wheel to earn more.");
+            }
+        }
+
+        function equipHat(id) {
+            window.shopManager.selectHat(id);
+            renderShopItems();
+            updatePreviewFish();
+            window.soundEngine.playClick();
+        }
+
+        function buyHat(id) {
+            if (window.shopManager.unlockHat(id)) {
+                renderShopItems();
+                updateMenuStats();
+                updatePreviewFish();
+                window.soundEngine.playLevelUp();
+            } else {
+                alert("Not enough gold! Complete stage challenges or spin the wheel to earn more.");
+            }
+        }
+
+        function buyWorkshopUpgrade(id) {
+            if (window.shopManager.buyUpgrade(id)) {
+                renderShopItems();
+                updateMenuStats();
+                window.soundEngine.playLevelUp();
+            } else {
+                alert("Not enough gold to upgrade!");
+            }
+        }
+
+        function openHowToPlay() {
+            document.getElementById('howToPlayModal').classList.remove('hidden');
+        }
+
+        function closeHowToPlay() {
+            document.getElementById('howToPlayModal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
