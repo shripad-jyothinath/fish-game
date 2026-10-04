@@ -552,6 +552,12 @@ class GameEngine {
         const hatsList = Object.keys(FISH_HATS);
 
         // Spawn Boss if it's a boss challenge stage
+        // Challenge difficulty scales with the shop tiers: stage 1 = starter
+        // gear, stage 15 = tier-4 enemies. Bosses get the strongest blade their
+        // stage allows, so the final fight practically requires endgame gear.
+        const stageProgress = Math.min(1, Math.max(0, (this.challengeData.level - 1) / 14));
+        const enemyStartLevel = 1 + Math.round(stageProgress * 9);
+
         if (this.challengeData.isBoss) {
             let bossSkin = 'megalodon';
             let bossWep = 'saw_blade';
@@ -565,17 +571,25 @@ class GameEngine {
                 bossHat = 'mini_crown';
             }
 
+            const bossTier = this.getMaxBotTier();
+            if (typeof WEAPON_TIERS !== 'undefined' && window.getWeaponTier && window.getWeaponTier(bossWep) < bossTier) {
+                const tierWeapons = WEAPON_TIERS[Math.min(bossTier, WEAPON_TIERS.length - 1)] || [];
+                if (tierWeapons.length > 0) bossWep = tierWeapons[tierWeapons.length - 1];
+            }
+
             this.bossFish = new Fish(2000, 2000, bossName, bossSkin, bossWep, true, bossHat);
-            this.bossFish.level = 1;
+            this.bossFish.level = enemyStartLevel;
             this.bossFish.isBoss = true;
+            // Challenge boss bounty scales with the stage (on top of the stage reward).
+            this.bossFish.bossRewardGold = 500 + this.challengeData.level * 300;
             this.bossFish.updateDimensions();
             this.bots.push(this.bossFish);
-            this.botControllers.push(new BotController(this.bossFish));
+            this.botControllers.push(new BotController(this.bossFish, Math.min(1, stageProgress + 0.15)));
         } else {
             this.bossFish = null;
         }
 
-        // Spawn supporting arena fish (All starting strictly at Level 1)
+        // Spawn supporting arena fish — gear and level both scale with the stage
         const botCount = this.challengeData.isBoss ? 12 : this.targetBotCount;
         for (let i = 0; i < botCount; i++) {
             const bx = 200 + Math.random() * (this.worldWidth - 400);
@@ -587,8 +601,10 @@ class GameEngine {
             const botHat = hatsList[Math.floor(Math.random() * hatsList.length)];
 
             const bot = new Fish(bx, by, botName, botSkin, botWeapon, true, botHat);
+            bot.level = enemyStartLevel;
+            bot.updateDimensions();
             this.bots.push(bot);
-            this.botControllers.push(new BotController(bot));
+            this.botControllers.push(new BotController(bot, stageProgress));
         }
 
         document.getElementById('mainMenu').classList.add('hidden');
@@ -851,6 +867,7 @@ class GameEngine {
                 this.matchFood
             );
             this.shop.addGold(this.matchGold);
+            this.notifyMatchBridge({ victory, source: 'match' });
         }
 
         if (this.soundEngine) {
@@ -878,6 +895,8 @@ class GameEngine {
             this.soundEngine.playJackpot();
         }
 
+        this.notifyMatchBridge({ victory: true, source: 'stage' });
+
         document.getElementById('hudOverlay').classList.add('hidden');
         const modal = document.getElementById('stageClearModal');
         if (modal) {
@@ -885,6 +904,28 @@ class GameEngine {
             document.getElementById('stageClearTitle').textContent = `STAGE ${this.currentChallengeLevel} CLEAR!`;
             document.getElementById('stageClearReward').textContent = `+${reward} 💰`;
             document.getElementById('stageClearStars').textContent = '⭐⭐⭐';
+        }
+    }
+
+    // Bridge to the website layer (accounts / Hedera receipts). Safe no-op when absent.
+    notifyMatchBridge(extra = {}) {
+        try {
+            if (typeof window !== 'undefined' && window.fishMatchBridge && typeof window.fishMatchBridge.onMatchEnd === 'function') {
+                window.fishMatchBridge.onMatchEnd({
+                    mode: this.gameMode,
+                    score: this.player ? this.player.score : 0,
+                    kills: this.matchKills,
+                    level: this.player ? this.player.level : 1,
+                    gold: this.matchGold,
+                    food: this.matchFood,
+                    chests: this.matchChests,
+                    kingTime: Math.floor(this.kingTime),
+                    matchTime: this.matchTime,
+                    ...extra
+                });
+            }
+        } catch (err) {
+            console.warn('Match bridge error:', err);
         }
     }
 
@@ -1075,8 +1116,18 @@ class GameEngine {
                         this.matchFood++;
                         this.soundEngine.playEat(food.isMeat);
                         if (food.gold > 0) {
-                            this.matchGold += food.gold;
-                            this.particles.addFloatingText(food.x, food.y, `+${food.gold} 💰`, '#ffd700', 14);
+                            // Gold drops scale with the collector's level (+8% per level),
+                            // so coins/chests keep up with the growing shop prices.
+                            const dropBonus = 1 + Math.max(0, fish.level - 1) * 0.08;
+                            const goldGain = Math.round(food.gold * dropBonus);
+                            this.matchGold += goldGain;
+                            this.particles.addFloatingText(
+                                food.x,
+                                food.y,
+                                dropBonus > 1.05 ? `+${goldGain} 💰 ×${dropBonus.toFixed(1)}` : `+${goldGain} 💰`,
+                                '#ffd700',
+                                14
+                            );
                         }
                     }
 
@@ -1261,10 +1312,13 @@ class GameEngine {
 
         if (!killer.isBot) {
             this.matchKills++;
-            let earnedGold = Math.round(victim.level * 14 + 10);
+            // Kill gold scales with the killer's level (+8% per level) so classic
+            // runs keep paying more as the player grows.
+            const levelBonus = 1 + Math.max(0, killer.level - 1) * 0.08;
+            let earnedGold = Math.round((victim.level * 14 + 10) * levelBonus);
 
             if (victim.isBoss) {
-                earnedGold = victim.bossRewardGold || 500;
+                earnedGold = Math.round((victim.bossRewardGold || 500) * levelBonus);
                 this.showAnnouncement(`👑 BOSS SLAIN! +${earnedGold} 💰 & MASSIVE LOOT! 👑`);
                 this.camera.addShake(20);
                 if (this.soundEngine) this.soundEngine.playJackpot();
@@ -1274,9 +1328,19 @@ class GameEngine {
             // Weapon Plunderer Perks
             if (killer.weaponId === 'pirate_sabre') earnedGold = Math.round(earnedGold * 1.5);
             if (killer.weaponId === 'dragon_horn') earnedGold = Math.round(earnedGold * 2.0);
+            if (killer.weaponId === 'sonic_lance') earnedGold = Math.round(earnedGold * 1.25);
+            if (killer.weaponId === 'leviathan_jaw') earnedGold = Math.round(earnedGold * 2.0);
+            if (killer.weaponId === 'meteor_maul') earnedGold = Math.round(earnedGold * 2.5);
 
             this.matchGold += earnedGold;
-            this.particles.addFloatingText(victim.x, victim.y - victim.radius - 20, `+${earnedGold} 💰`, '#ffd700', 24, true);
+            this.particles.addFloatingText(
+                victim.x,
+                victim.y - victim.radius - 20,
+                levelBonus > 1.05 ? `+${earnedGold} 💰 ×${levelBonus.toFixed(1)}` : `+${earnedGold} 💰`,
+                '#ffd700',
+                24,
+                true
+            );
 
             this.triggerStreak(killer);
             this.soundEngine.playSlash();
@@ -1810,6 +1874,14 @@ class GameEngine {
 
     loop(timestamp) {
         if (this.isPaused) {
+            this.lastTime = timestamp;
+            requestAnimationFrame((t) => this.loop(t));
+            return;
+        }
+
+        // The menu screen is opaque and owns the display; skip world simulation
+        // and rendering entirely to save CPU/GPU while players browse menus.
+        if (this.gameState === 'menu') {
             this.lastTime = timestamp;
             requestAnimationFrame((t) => this.loop(t));
             return;

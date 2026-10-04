@@ -19,6 +19,9 @@ keys/
 logs/
 tmp/
 
+# local dev database (SQLite)
+apps/api/data/
+
 # editors / os
 .DS_Store
 Thumbs.db

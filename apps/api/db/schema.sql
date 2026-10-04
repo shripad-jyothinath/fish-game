@@ -22,7 +22,9 @@ create table accounts (
 create table wallet_links (
   account_id        uuid not null references accounts(id) on delete cascade,
   hedera_account_id text not null unique,
-  public_key        text not null,
+  public_key        text,
+  method            text not null default 'signature',  -- 'transfer' | 'signature'
+  network           text not null default 'testnet',
   linked_at         timestamptz not null default now(),
   primary key (account_id, hedera_account_id)
 );
@@ -268,6 +270,16 @@ create table hcs_messages (
   created_at          timestamptz not null default now()
 );
 create index hcs_match_idx on hcs_messages (match_id) where match_id is not null;
+
+-- Auto-provisioned on-chain resources per network (topic / $GOLD / NFT collection).
+create table hedera_resources (
+  network    text not null,
+  kind       text not null,   -- 'hcs_topic' | 'gold_token' | 'nft_collection'
+  id         text not null,
+  meta       jsonb not null default '{}',
+  updated_at timestamptz not null default now(),
+  primary key (network, kind)
+);
 
 -- ============================================================ PROGRESSION & COMPETITIVE
 create table player_stats (

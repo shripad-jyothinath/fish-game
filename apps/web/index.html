@@ -38,6 +38,21 @@
             <div class="menu-bubble" style="left:55%; width:26px; height:26px; animation-duration:11s; animation-delay:2.2s;"></div>
             <div class="menu-bubble" style="left:78%; width:12px; height:12px; animation-duration:8s; animation-delay:3.8s;"></div>
 
+            <!-- Account bar (guests can play; accounts sync progress) -->
+            <div class="account-bar" id="accountBar">
+                <div class="account-group" id="accountGuest">
+                    <button class="account-btn" onclick="openAuthModal('login')">Log in</button>
+                    <button class="account-btn accent" onclick="openAuthModal('register')">Sign up</button>
+                </div>
+                <div class="account-group hidden" id="accountUser">
+                    <span class="account-chip">
+                        <span class="account-avatar">🦈</span>
+                        <span id="accountName">Player</span>
+                    </span>
+                    <button class="account-btn" onclick="fishLogout()">Sign out</button>
+                </div>
+            </div>
+
             <div class="home-layout">
                 
                 <!-- LEFT SIDE: MULTIPLE LEVEL CHALLENGES ROADMAP -->
@@ -65,7 +80,7 @@
                     </div>
 
                     <div class="input-group">
-                        <label for="playerNameInput">Player Name</label>
+                        <label for="playerNameInput" id="playerNameLabel">Player Name</label>
                         <input type="text" id="playerNameInput" maxlength="14" placeholder="SharkKing" value="SharkKing">
                     </div>
 
@@ -132,6 +147,14 @@
                         <div>
                             <div class="event-title">Weapons Armory (14)</div>
                             <div class="event-desc">Excalibur, Lasers & Chainsaws!</div>
+                        </div>
+                    </button>
+
+                    <button class="event-banner-btn" onclick="openLeaderboard()">
+                        <div class="event-icon">🌐</div>
+                        <div>
+                            <div class="event-title">Global Leaderboard</div>
+                            <div class="event-desc">Top scores · Hedera receipts</div>
                         </div>
                     </button>
                 </div>
@@ -293,6 +316,8 @@
                     <div id="stageClearReward" style="font-size: 2rem; font-weight: 900; color: #FFD740; text-shadow: 0 0 12px rgba(255,215,0,0.5);">+200 💰</div>
                 </div>
 
+                <div id="hederaReceiptStage" class="hedera-receipt hidden"></div>
+
                 <div style="display: flex; gap: 12px; width: 100%;">
                     <button class="btn-primary" style="flex: 1;" onclick="playNextStage()">NEXT STAGE ⏩</button>
                     <button class="btn-secondary" style="flex: 1;" onclick="returnToMenu()">MAIN MENU 🏠</button>
@@ -316,6 +341,56 @@
                     <p>⚔️ <b>Blade Parry:</b> If two blades clash directly head-to-head, they bounce off with a parry spark!</p>
                     <p>👑 <b>Level Challenges & Bosses:</b> Progress through 15 stages to slay the Giant Megalodon and the Golden Dragon Leviathan!</p>
                     <button class="btn-primary" onclick="closeHowToPlay()" style="margin-top: 10px;">GOT IT, LET'S PLAY!</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== ACCOUNT / AUTH MODAL ===== -->
+        <div id="authModal" class="modal-backdrop hidden">
+            <div class="modal-card auth-card">
+                <div class="modal-header">
+                    <div class="modal-title" id="authTitle">WELCOME BACK</div>
+                    <button class="modal-close" onclick="closeAuthModal()">&times;</button>
+                </div>
+                <div class="auth-body">
+                    <div class="auth-tabs">
+                        <button class="auth-tab active" id="authTabLogin" type="button" onclick="switchAuthTab('login')">Log in</button>
+                        <button class="auth-tab" id="authTabRegister" type="button" onclick="switchAuthTab('register')">Create account</button>
+                    </div>
+                    <form id="authForm" onsubmit="submitAuth(event)">
+                        <div class="auth-field hidden" id="authUsernameField">
+                            <label for="authUsername">Username</label>
+                            <input type="text" id="authUsername" maxlength="14" autocomplete="username" placeholder="SharkKing">
+                        </div>
+                        <div class="auth-field">
+                            <label for="authEmail">Email</label>
+                            <input type="email" id="authEmail" autocomplete="email" placeholder="you@example.com">
+                        </div>
+                        <div class="auth-field">
+                            <label for="authPassword">Password</label>
+                            <input type="password" id="authPassword" autocomplete="current-password" placeholder="At least 8 characters">
+                        </div>
+                        <div class="auth-error hidden" id="authError"></div>
+                        <button class="btn-primary auth-submit" id="authSubmit" type="submit">LOG IN</button>
+                    </form>
+                    <div class="auth-note">
+                        Guests can play without an account — signing up keeps your gold,
+                        unlocks and stage progress on every device.
+                    </div>
+                    <div id="hederaPanel" class="hedera-panel hidden"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== GLOBAL LEADERBOARD MODAL ===== -->
+        <div id="leaderboardModal" class="modal-backdrop hidden">
+            <div class="modal-card" style="max-width: 640px;">
+                <div class="modal-header">
+                    <div class="modal-title">🌐 Global Leaderboard</div>
+                    <button class="modal-close" onclick="closeLeaderboard()">&times;</button>
+                </div>
+                <div class="leaderboard-body" id="leaderboardBody">
+                    <div class="lb-empty">Loading…</div>
                 </div>
             </div>
         </div>
@@ -362,6 +437,8 @@
                     </div>
                 </div>
 
+                <div id="hederaReceipt" class="hedera-receipt hidden"></div>
+
                 <div style="display: flex; gap: 12px; width: 100%;">
                     <button class="btn-primary" style="flex: 1;" onclick="restartGame()">PLAY AGAIN 🔄</button>
                     <button class="btn-secondary" style="flex: 1;" onclick="returnToMenu()">MAIN MENU 🏠</button>
@@ -379,6 +456,8 @@
     <script src="src/entities.js"></script>
     <script src="src/ai.js"></script>
     <script src="src/game.js"></script>
+    <script src="src/item3d.js"></script>
+    <script src="src/api.js"></script>
 
     <!-- Game Initialization & UI Binding -->
     <script>
@@ -471,6 +550,15 @@
                 const stars = sm.levelStars[stage.level] || 0;
                 totalStars += stars;
 
+                const recTier = window.getChallengeRecommendedTier(stage.level);
+                const myTier = window.getWeaponTier(sm.selectedWeapon);
+                const tierWeapons = (window.WEAPON_TIERS[recTier] || [])
+                    .map(id => (window.WEAPON_SKINS[id] && window.WEAPON_SKINS[id].name) || id)
+                    .join(' · ');
+                const gearLine = myTier < recTier
+                    ? `<div class="level-gear under">⚠️ Your Tier ${myTier} blade vs Tier ${recTier} enemies (${tierWeapons})</div>`
+                    : `<div class="level-gear">⚔️ Enemy blades: Tier ${recTier} · ${tierWeapons}</div>`;
+
                 let starStr = '';
                 if (stars === 3) starStr = '⭐⭐⭐';
                 else if (stars === 2) starStr = '⭐⭐';
@@ -487,6 +575,7 @@
                             ${stage.isBoss ? '<span style="color:#EF5350; font-size:0.7rem; font-weight:900;">💀 BOSS</span>' : ''}
                         </div>
                         <div class="level-desc-txt">${stage.desc}</div>
+                        ${gearLine}
                         <div class="level-stars-display">${starStr} | +${stage.reward} 💰</div>
                     </div>
                     ${isUnlocked 
@@ -857,7 +946,18 @@
             excalibur: '👑',
             thunder_spear: '⚡',
             chainsaw: '⛓️',
-            dragon_horn: '🐉'
+            dragon_horn: '🐉',
+            harpoon_gun: '🎯',
+            coral_staff: '🪄',
+            anchor_flail: '⚓',
+            eel_whip: '⚡',
+            sonic_lance: '📡',
+            drill_saw: '🪛',
+            kraken_tentacle: '🐙',
+            leviathan_jaw: '🦈',
+            abyss_scythe: '🌙',
+            crown_of_tides: '👑',
+            meteor_maul: '☄️'
         };
 
         const SHOP_FISH_ICONS = {
@@ -940,9 +1040,8 @@
                     const card = document.createElement('div');
                     card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
                     card.innerHTML = `
-                        <div class="item-preview" style="border: 2px solid ${item.glowColor}; display: flex; align-items: center; justify-content: center; gap: 10px; background: rgba(0,0,0,0.25);">
-                            <span style="font-size: 1.8rem;">${icon}</span>
-                            <div style="width: 48px; height: 8px; border-radius: 4px; background: ${item.bladeColor}; box-shadow: 0 0 12px ${item.glowColor}; border: 1px solid rgba(255,255,255,0.4);"></div>
+                        <div class="item-preview" style="border: 2px solid ${item.glowColor}; background: rgba(0,0,0,0.25);">
+                            <span class="item-icon-slot" data-cat="weapon" data-id="${item.id}">${icon}</span>
                         </div>
                         <div class="item-name">${item.name}</div>
                         <div class="item-desc">${item.desc}</div>
@@ -966,8 +1065,8 @@
                     const card = document.createElement('div');
                     card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
                     card.innerHTML = `
-                        <div class="item-preview" style="display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.25);">
-                            <span style="font-size: 2.2rem;">${icon}</span>
+                        <div class="item-preview" style="background: rgba(0,0,0,0.25);">
+                            <span class="item-icon-slot" data-cat="hat" data-id="${item.id}">${icon}</span>
                         </div>
                         <div class="item-name">${item.name}</div>
                         <div class="item-desc">${item.desc}</div>
@@ -1005,6 +1104,8 @@
                     container.appendChild(card);
                 });
             }
+
+            if (window.ItemPreview3D) window.ItemPreview3D.hydrate(container);
         }
 
         function equipFish(id) {

@@ -3,8 +3,12 @@
 > Turning the browser game in this repo into a real project with wallets, on-chain rewards,
 > NFT cosmetics, and verifiable leaderboards/tournaments on the Hedera network.
 >
-> Status: DRAFT v1 — decisions needed (see §12). Items marked **[verify]** should be confirmed
-> against current Hedera docs before implementation.
+> Status: **Core implemented (testnet-ready)** — HCS match receipts, `$GOLD` HTS rewards,
+> NFT mints, wallet linking (`transfer` proof + signature verify) and the global leaderboard
+> live in `apps/api/src/hedera/` (web UI in `apps/web/src/api.js`). Auto-provisioning:
+> `npm run hedera:setup -- --write-env`. Remaining: add testnet keys, WalletConnect frontend,
+> marketplace/tournaments. The §12 MVP decisions were resolved as: testnet first, guest-first,
+> HCS + `$GOLD` + NFTs before marketplace.
 >
 > **See also:** `docs/DATABASE_PLAN.md` (Postgres/Redis schema for many players) and
 > `docs/MULTIPLAYER_PLAN.md` (server-authoritative common map). Multiplayer upgrades the trust

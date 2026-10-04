@@ -8,15 +8,23 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "npm --workspace @fishio/api run dev",
+    "api:dev": "npm --workspace @fishio/api run dev",
+    "api:start": "npm --workspace @fishio/api run start",
     "web:serve": "python -m http.server 8137 --bind 127.0.0.1 -d apps/web",
     "game-core:test": "node --test packages/game-core/test/sim.test.js",
     "game-core:sim": "node packages/game-core/bin/sim.js",
-    "api:dev": "node apps/api/src/index.ts",
+    "api:test": "npm --workspace @fishio/api run test",
     "api:typecheck": "tsc --noEmit -p apps/api",
+    "hedera:setup": "npm --workspace @fishio/api run hedera:setup",
+    "hedera:wallet": "npm --workspace @fishio/api run hedera:wallet",
     "typecheck": "tsc --noEmit -p apps/api"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
   }
 }

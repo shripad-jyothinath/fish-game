@@ -563,6 +563,160 @@ const WEAPON_SKINS = {
         trailColor: 'rgba(255, 82, 82, 0.8)',
         lengthMult: 4.5,
         widthMult: 2.8
+    },
+    harpoon_gun: {
+        id: 'harpoon_gun',
+        name: 'Whaling Harpoon',
+        cost: 3000,
+        unlocked: false,
+        desc: 'Barbed whaling harpoon with a coiled line. Precise strikes teach you faster.',
+        perk: '🎯 Hunter’s Mark: +30% XP on Kills',
+        bladeColor: '#9ad0f5',
+        glowColor: '#4fc3f7',
+        hiltColor: '#5d4037',
+        trailColor: 'rgba(79, 195, 247, 0.5)',
+        lengthMult: 1.85,
+        widthMult: 1.25
+    },
+    coral_staff: {
+        id: 'coral_staff',
+        name: 'Coral Sorcerer Staff',
+        cost: 5000,
+        unlocked: false,
+        desc: 'Living coral staff humming with current. Nimble and swift.',
+        perk: '🌀 Living Current: +15% Turn & +10% Speed',
+        bladeColor: '#ff6b81',
+        glowColor: '#a55eea',
+        hiltColor: '#4a148c',
+        trailColor: 'rgba(255, 107, 129, 0.5)',
+        lengthMult: 2.0,
+        widthMult: 1.55
+    },
+    anchor_flail: {
+        id: 'anchor_flail',
+        name: 'Abyssal Anchor Flail',
+        cost: 7000,
+        unlocked: false,
+        desc: 'Shipwreck anchor on a heavy chain. Slow to carry, brutal to boost.',
+        perk: '⚖️ Deadweight: +18% Boost Power, −5% Base Speed',
+        bladeColor: '#95a5a6',
+        glowColor: '#7f8c8d',
+        hiltColor: '#34495e',
+        trailColor: 'rgba(149, 165, 166, 0.55)',
+        lengthMult: 2.45,
+        widthMult: 2.2
+    },
+    eel_whip: {
+        id: 'eel_whip',
+        name: 'Volt Eel Whip',
+        cost: 9500,
+        unlocked: false,
+        desc: 'Sinewy electric eel that discharges on every kill.',
+        perk: '⚡ Discharge: +30 Stamina per Kill',
+        bladeColor: '#2ed573',
+        glowColor: '#7bed9f',
+        hiltColor: '#1e90ff',
+        trailColor: 'rgba(46, 213, 115, 0.55)',
+        lengthMult: 2.55,
+        widthMult: 1.45
+    },
+    sonic_lance: {
+        id: 'sonic_lance',
+        name: 'Sonar Pulse Lance',
+        cost: 13000,
+        unlocked: false,
+        desc: 'Emits a piercing sonar pulse. Plundered echoes ring with extra gold.',
+        perk: '📡 Echo Plunder: +25% Gold on Kills',
+        bladeColor: '#70a1ff',
+        glowColor: '#1e90ff',
+        hiltColor: '#2f3542',
+        trailColor: 'rgba(112, 161, 255, 0.6)',
+        lengthMult: 3.0,
+        widthMult: 1.85
+    },
+    drill_saw: {
+        id: 'drill_saw',
+        name: 'Trench Drill',
+        cost: 17000,
+        unlocked: false,
+        desc: 'Diamond drill that bores through predators — and through the XP curve.',
+        perk: '🪚 Boring Fury: +40% XP on Kills',
+        bladeColor: '#ffa502',
+        glowColor: '#ff6348',
+        hiltColor: '#2f3542',
+        trailColor: 'rgba(255, 165, 2, 0.6)',
+        lengthMult: 3.4,
+        widthMult: 2.2
+    },
+    kraken_tentacle: {
+        id: 'kraken_tentacle',
+        name: 'Kraken’s Grasp',
+        cost: 22000,
+        unlocked: false,
+        desc: 'Living tentacle that drains the fallen to feed your boost.',
+        perk: '🐙 Drain: +45 Stamina per Kill',
+        bladeColor: '#8e44ad',
+        glowColor: '#e056fd',
+        hiltColor: '#5f27cd',
+        trailColor: 'rgba(224, 86, 253, 0.6)',
+        lengthMult: 3.8,
+        widthMult: 2.4
+    },
+    leviathan_jaw: {
+        id: 'leviathan_jaw',
+        name: 'Leviathan Jaw',
+        cost: 40000,
+        unlocked: false,
+        desc: 'Jaw of an ancient leviathan lined with serrated teeth.',
+        perk: '🦈 Apex Feast: +100% Gold & +50% XP on Kills',
+        bladeColor: '#dfe6e9',
+        glowColor: '#00cec9',
+        hiltColor: '#2d3436',
+        trailColor: 'rgba(0, 206, 201, 0.65)',
+        lengthMult: 4.7,
+        widthMult: 2.9
+    },
+    abyss_scythe: {
+        id: 'abyss_scythe',
+        name: 'Abyssal Reaper Scythe',
+        cost: 55000,
+        unlocked: false,
+        desc: 'Harvest blade of the deep. Every kill grants a burst of speed.',
+        perk: '💀 Reaper’s Rush: 2.5s Speed Star on every Kill',
+        bladeColor: '#e056fd',
+        glowColor: '#8e44ad',
+        hiltColor: '#1e272e',
+        trailColor: 'rgba(224, 86, 253, 0.7)',
+        lengthMult: 5.0,
+        widthMult: 2.6
+    },
+    crown_of_tides: {
+        id: 'crown_of_tides',
+        name: 'Crown of Tides',
+        cost: 80000,
+        unlocked: false,
+        desc: 'Regal blade of the ocean throne. Royal agility and stamina.',
+        perk: '👑 Sovereign: +20% Turn, +25% Speed, +50 Stamina',
+        bladeColor: '#FFD740',
+        glowColor: '#00f7ff',
+        hiltColor: '#0a3d62',
+        trailColor: 'rgba(255, 215, 64, 0.7)',
+        lengthMult: 5.4,
+        widthMult: 3.0
+    },
+    meteor_maul: {
+        id: 'meteor_maul',
+        name: 'Meteor Maul',
+        cost: 120000,
+        unlocked: false,
+        desc: 'Fallen star forged into a hammer. The ocean’s final answer.',
+        perk: '☄️ Extinction: +150% Gold & +75% XP on Kills',
+        bladeColor: '#ff4757',
+        glowColor: '#ffa502',
+        hiltColor: '#2c3e50',
+        trailColor: 'rgba(255, 71, 87, 0.8)',
+        lengthMult: 5.8,
+        widthMult: 3.2
     }
 };
 
@@ -719,24 +873,26 @@ const WORKSHOP_UPGRADES = {
 };
 
 // 15 Level Challenges with unique stage goals and boss battles!
+// Rewards and targets scale with the stage: later challenges take longer and
+// pay far more, staying proportional to shop/weapon tier costs.
 const LEVEL_CHALLENGES = [
     { level: 1, title: 'Reef Rookie', map: 'coral_reef', goalType: 'kills', target: 3, reward: 200, stars: 3, desc: 'Slice 3 fish in the Tropical Reef' },
-    { level: 2, title: 'Sushi Feast', map: 'coral_reef', goalType: 'food', target: 40, reward: 250, stars: 3, desc: 'Eat 40 sushi pieces to grow' },
-    { level: 3, title: 'Treasure Seeker', map: 'coral_reef', goalType: 'chests', target: 1, reward: 300, stars: 3, desc: 'Break open 1 Sunken Treasure Chest' },
-    { level: 4, title: 'Speed Striker', map: 'coral_reef', goalType: 'kills_timed', target: 4, timeLimit: 45, reward: 350, stars: 3, desc: 'Slice 4 fish in under 45 seconds' },
-    { level: 5, title: 'Coral Gladiator', map: 'coral_reef', goalType: 'level', target: 6, reward: 450, stars: 3, desc: 'Reach Level 6 in the Reef' },
-    
-    { level: 6, title: 'Abyss Descent', map: 'deep_abyss', goalType: 'kills', target: 5, reward: 550, stars: 3, desc: 'Slice 5 predators in the Midnight Trench' },
-    { level: 7, title: 'Hydro Rush', map: 'deep_abyss', goalType: 'food', target: 75, reward: 600, stars: 3, desc: 'Collect 75 deep-sea sushi pieces' },
-    { level: 8, title: 'Crown Usurper', map: 'deep_abyss', goalType: 'slay_king', target: 1, reward: 800, stars: 3, desc: 'Hunt down and slay the Ocean King' },
-    { level: 9, title: 'Deep Dominator', map: 'deep_abyss', goalType: 'level', target: 8, reward: 900, stars: 3, desc: 'Evolve to Level 8 in the Abyss' },
-    { level: 10, title: 'BOSS: Megalodon', map: 'deep_abyss', goalType: 'boss_megalodon', target: 1, isBoss: true, reward: 1500, stars: 3, desc: 'Defeat the Giant Boss Megalodon!' },
+    { level: 2, title: 'Sushi Feast', map: 'coral_reef', goalType: 'food', target: 45, reward: 280, stars: 3, desc: 'Eat 45 sushi pieces to grow' },
+    { level: 3, title: 'Treasure Seeker', map: 'coral_reef', goalType: 'chests', target: 1, reward: 400, stars: 3, desc: 'Break open 1 Sunken Treasure Chest' },
+    { level: 4, title: 'Speed Striker', map: 'coral_reef', goalType: 'kills_timed', target: 5, timeLimit: 45, reward: 560, stars: 3, desc: 'Slice 5 fish in under 45 seconds' },
+    { level: 5, title: 'Coral Gladiator', map: 'coral_reef', goalType: 'level', target: 6, reward: 780, stars: 3, desc: 'Reach Level 6 in the Reef' },
 
-    { level: 11, title: 'Glacial Hunt', map: 'arctic_ocean', goalType: 'kills', target: 7, reward: 1000, stars: 3, desc: 'Slice 7 sharks in the Arctic Ocean' },
-    { level: 12, title: 'Frost Rampage', map: 'arctic_ocean', goalType: 'streak', target: 3, reward: 1200, stars: 3, desc: 'Achieve a Triple Kill streak in the Ice' },
-    { level: 13, title: 'Atlantis Vault', map: 'sunken_atlantis', goalType: 'chests', target: 3, reward: 1500, stars: 3, desc: 'Crack open 3 Atlantis Treasure Chests' },
-    { level: 14, title: 'Apex Predator', map: 'sunken_atlantis', goalType: 'level', target: 10, reward: 2000, stars: 3, desc: 'Reach Level 10 in Sunken Atlantis' },
-    { level: 15, title: 'BOSS: Golden Leviathan', map: 'sunken_atlantis', goalType: 'boss_leviathan', target: 1, isBoss: true, reward: 3500, stars: 3, desc: 'Slay the Royal Golden Leviathan Dragon!' }
+    { level: 6, title: 'Abyss Descent', map: 'deep_abyss', goalType: 'kills', target: 7, reward: 1050, stars: 3, desc: 'Slice 7 predators in the Midnight Trench' },
+    { level: 7, title: 'Hydro Rush', map: 'deep_abyss', goalType: 'food', target: 90, reward: 1400, stars: 3, desc: 'Collect 90 deep-sea sushi pieces' },
+    { level: 8, title: 'Crown Usurper', map: 'deep_abyss', goalType: 'slay_king', target: 1, reward: 1850, stars: 3, desc: 'Hunt down and slay the Ocean King' },
+    { level: 9, title: 'Deep Dominator', map: 'deep_abyss', goalType: 'level', target: 8, reward: 2400, stars: 3, desc: 'Evolve to Level 8 in the Abyss' },
+    { level: 10, title: 'BOSS: Megalodon', map: 'deep_abyss', goalType: 'boss_megalodon', target: 1, isBoss: true, reward: 3100, stars: 3, desc: 'Defeat the Giant Boss Megalodon!' },
+
+    { level: 11, title: 'Glacial Hunt', map: 'arctic_ocean', goalType: 'kills', target: 11, reward: 3900, stars: 3, desc: 'Slice 11 sharks in the Arctic Ocean' },
+    { level: 12, title: 'Frost Rampage', map: 'arctic_ocean', goalType: 'streak', target: 3, reward: 4900, stars: 3, desc: 'Achieve a Triple Kill streak in the Ice' },
+    { level: 13, title: 'Atlantis Vault', map: 'sunken_atlantis', goalType: 'chests', target: 4, reward: 6100, stars: 3, desc: 'Crack open 4 Atlantis Treasure Chests' },
+    { level: 14, title: 'Apex Predator', map: 'sunken_atlantis', goalType: 'level', target: 11, reward: 7500, stars: 3, desc: 'Reach Level 11 in Sunken Atlantis' },
+    { level: 15, title: 'BOSS: Golden Leviathan', map: 'sunken_atlantis', goalType: 'boss_leviathan', target: 1, isBoss: true, reward: 9200, stars: 3, desc: 'Slay the Royal Golden Leviathan Dragon!' }
 ];
 
 const DAILY_REWARDS = [
@@ -864,7 +1020,8 @@ class ShopManager {
                 dailyLoginDay: this.dailyLoginDay,
                 lastLoginTimestamp: this.lastLoginTimestamp,
                 hasClaimedDailyToday: this.hasClaimedDailyToday,
-                freeWheelSpins: this.freeWheelSpins
+                freeWheelSpins: this.freeWheelSpins,
+                savedAt: Date.now()
             };
             localStorage.setItem('fishio_savedata_v4', JSON.stringify(data));
         } catch (e) {
@@ -1005,18 +1162,36 @@ class ShopManager {
 }
 
 // ===== Gear Progression Tiers =====
-// Weapons & fish species are grouped into 5 cost-based tiers. Early matches only
-// face starter gear; stronger loadouts appear as the player levels up / match progresses.
-function buildGearTiers(dict, tierCount = 5) {
-    const items = Object.keys(dict).map(k => dict[k]).sort((a, b) => (a.cost || 0) - (b.cost || 0));
+// Weapons & fish species are grouped into 5 tiers. Early matches only face
+// starter gear; stronger loadouts appear as the player levels up / match progresses.
+//
+// Weapon tiers are explicit so adding shop content can never silently move a
+// katana into the day-1 bot pool. Fish tiers stay cost-quantile based.
+const WEAPON_TIER_OVERRIDES = {
+    coral_dagger: 0, wooden_spear: 0, iron_cutlass: 0,
+    ninja_katana: 1, trident: 1, pirate_sabre: 1, harpoon_gun: 1,
+    laser_saber: 2, saw_blade: 2, ice_crystal: 2, coral_staff: 2, anchor_flail: 2, eel_whip: 2,
+    volcano_magma: 3, excalibur: 3, thunder_spear: 3, sonic_lance: 3, drill_saw: 3, kraken_tentacle: 3,
+    chainsaw: 4, dragon_horn: 4, leviathan_jaw: 4, abyss_scythe: 4, crown_of_tides: 4, meteor_maul: 4
+};
+
+function buildGearTiers(dict, tierCount = 5, overrides = null) {
     const tiers = Array.from({ length: tierCount }, () => []);
+    if (overrides) {
+        Object.keys(dict).forEach(id => {
+            const t = Math.max(0, Math.min(tierCount - 1, overrides[id] ?? 0));
+            tiers[t].push(id);
+        });
+        return tiers;
+    }
+    const items = Object.keys(dict).map(k => dict[k]).sort((a, b) => (a.cost || 0) - (b.cost || 0));
     items.forEach((item, i) => {
         const t = Math.min(tierCount - 1, Math.floor((i / items.length) * tierCount));
         tiers[t].push(item.id);
     });
     return tiers;
 }
-const WEAPON_TIERS = buildGearTiers(WEAPON_SKINS, 5);
+const WEAPON_TIERS = buildGearTiers(WEAPON_SKINS, 5, WEAPON_TIER_OVERRIDES);
 const FISH_TIERS = buildGearTiers(FISH_SKINS, 5);
 const GEAR_TIER_NAMES = ['Rusty', 'Sharp', 'Forged', 'Exotic', 'Legendary'];
 
@@ -1031,6 +1206,15 @@ window.getFishTier = function (id) {
     for (let t = 0; t < FISH_TIERS.length; t++) if (FISH_TIERS[t].includes(id)) return t;
     return 0;
 };
+
+// Which gear tier a challenge stage is tuned for (stage 1 → tier 0 … stage 15 → tier 4).
+// This is intel for the player, not a gate: any loadout can enter, difficulty does the talking.
+function getChallengeRecommendedTier(level) {
+    const maxTier = WEAPON_TIERS.length - 1;
+    const stages = Math.max(1, LEVEL_CHALLENGES.length - 1);
+    return Math.max(0, Math.min(maxTier, Math.round(((Math.max(1, level) - 1) / stages) * maxTier)));
+}
+window.getChallengeRecommendedTier = getChallengeRecommendedTier;
 
 window.FISH_MAPS = FISH_MAPS;
 window.FISH_SKINS = FISH_SKINS;

@@ -137,6 +137,13 @@ class Fish {
         if (this.weaponId === 'ninja_katana') weaponTurnBonus = 1.3;
         if (this.weaponId === 'laser_saber') weaponSpeedBonus = 1.35;
         if (this.weaponId === 'chainsaw') this.maxStamina = 200 * (this.skin.stats?.boost || 1.0);
+        if (this.weaponId === 'coral_staff') { weaponTurnBonus *= 1.15; weaponSpeedBonus *= 1.10; }
+        if (this.weaponId === 'anchor_flail') weaponSpeedBonus *= 0.95;
+        if (this.weaponId === 'crown_of_tides') {
+            weaponTurnBonus *= 1.2;
+            weaponSpeedBonus *= 1.25;
+            this.maxStamina = Math.max(this.maxStamina, 150 * (this.skin.stats?.boost || 1.0));
+        }
 
         this.currentTurnSpeed = Math.max(0.06, (this.turnSpeed * weaponTurnBonus) / Math.pow(scale, 0.22));
         this.currentBaseSpeed = Math.max(3.2, (this.baseSpeed * weaponSpeedBonus) / Math.pow(scale, 0.15));
@@ -179,6 +186,10 @@ class Fish {
         // Weapon OP perks on kill
         if (this.weaponId === 'saw_blade') bonusXP = Math.round(bonusXP * 1.75);
         if (this.weaponId === 'dragon_horn') bonusXP = Math.round(bonusXP * 2.0);
+        if (this.weaponId === 'harpoon_gun') bonusXP = Math.round(bonusXP * 1.3);
+        if (this.weaponId === 'drill_saw') bonusXP = Math.round(bonusXP * 1.4);
+        if (this.weaponId === 'leviathan_jaw') bonusXP = Math.round(bonusXP * 1.5);
+        if (this.weaponId === 'meteor_maul') bonusXP = Math.round(bonusXP * 1.75);
 
         this.addXP(bonusXP, particleSystem, soundEngine);
 
@@ -207,6 +218,22 @@ class Fish {
             if (particleSystem) {
                 particleSystem.addShockwave(this.x, this.y, this.radius * 4, '#ff4757');
                 particleSystem.addFloatingText(this.x, this.y - this.radius - 55, '🔥 MAGMA BLAST!', '#ff4757', 22, true);
+            }
+        } else if (this.weaponId === 'eel_whip') {
+            this.stamina = Math.min(this.maxStamina, this.stamina + 30);
+            if (particleSystem) particleSystem.addSparks(this.x, this.y, 10, '#2ed573');
+        } else if (this.weaponId === 'kraken_tentacle') {
+            this.stamina = Math.min(this.maxStamina, this.stamina + 45);
+            if (particleSystem) {
+                particleSystem.addFloatingText(this.x, this.y - this.radius - 55, '🐙 DRAIN +45 ⚡', '#e056fd', 18, true);
+            }
+        } else if (this.weaponId === 'abyss_scythe') {
+            this.powerupTimers.speed_star = Math.max(this.powerupTimers.speed_star, 2.5);
+            if (particleSystem) particleSystem.addShockwave(this.x, this.y, this.radius * 3, '#e056fd');
+        } else if (this.weaponId === 'meteor_maul') {
+            if (particleSystem) {
+                particleSystem.addShockwave(this.x, this.y, this.radius * 5, '#ff4757');
+                particleSystem.addSparks(this.x, this.y, 18, '#ffa502');
             }
         }
 
@@ -286,6 +313,7 @@ class Fish {
         // Boosting (Shift / Space / Mouse Left)
         if (this.isBoosting && this.stamina > 0) {
             speedMult *= this.boostSpeedMultiplier;
+            if (this.weaponId === 'anchor_flail') speedMult *= 1.18;
             this.stamina = Math.max(0, this.stamina - this.boostCostRate * 0.016 * dt);
 
             if (particleSystem && Math.random() < 0.35) {
@@ -1201,6 +1229,322 @@ class Fish {
                     ctx.arc(bladeLen * (0.15 * s), 0, bladeW * 0.25, -Math.PI / 2, Math.PI / 2);
                     ctx.stroke();
                 }
+                break;
+            }
+            case 'harpoon_gun': {
+                // Harpoon shaft with rope coil and barbed head
+                ctx.strokeStyle = '#8d6e63';
+                ctx.lineWidth = bladeW * 0.28;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(bladeLen * 0.72, 0);
+                ctx.stroke();
+
+                ctx.strokeStyle = '#f5cd79';
+                ctx.lineWidth = 1.4 * zoom;
+                for (let c = 0; c < 3; c++) {
+                    ctx.beginPath();
+                    ctx.arc(bladeLen * 0.2, 0, bladeW * (0.45 + c * 0.3), 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                ctx.fillStyle = this.weapon.bladeColor || '#9ad0f5';
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.72, -bladeW * 0.45);
+                ctx.lineTo(bladeLen, 0);
+                ctx.lineTo(bladeLen * 0.72, bladeW * 0.45);
+                ctx.lineTo(bladeLen * 0.78, 0);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#dfe6e9';
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.72, -bladeW * 0.45);
+                ctx.lineTo(bladeLen * 0.58, -bladeW * 0.95);
+                ctx.lineTo(bladeLen * 0.74, -bladeW * 0.55);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.72, bladeW * 0.45);
+                ctx.lineTo(bladeLen * 0.58, bladeW * 0.95);
+                ctx.lineTo(bladeLen * 0.74, bladeW * 0.55);
+                ctx.closePath();
+                ctx.fill();
+                break;
+            }
+            case 'coral_staff': {
+                // Living coral staff with glowing orb
+                ctx.strokeStyle = this.weapon.hiltColor || '#4a148c';
+                ctx.lineWidth = bladeW * 0.32;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(bladeLen * 0.92, 0);
+                ctx.stroke();
+
+                ctx.fillStyle = this.weapon.glowColor || '#ff6b81';
+                ctx.beginPath();
+                ctx.arc(bladeLen * 0.5, 0, bladeW * 0.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.strokeStyle = this.weapon.bladeColor || '#ff6b81';
+                ctx.lineWidth = 2 * zoom;
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.5, -bladeW * 0.4);
+                ctx.lineTo(bladeLen * 0.42, -bladeW * 1.15);
+                ctx.moveTo(bladeLen * 0.5, bladeW * 0.4);
+                ctx.lineTo(bladeLen * 0.42, bladeW * 1.15);
+                ctx.moveTo(bladeLen * 0.5, 0);
+                ctx.lineTo(bladeLen * 0.64, -bladeW * 0.9);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.arc(bladeLen, 0, bladeW * 0.35, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case 'anchor_flail': {
+                // Chain flail ending in a shipwreck anchor
+                ctx.strokeStyle = '#7f8c8d';
+                ctx.lineWidth = bladeW * 0.22;
+                for (let c = 0; c < 4; c++) {
+                    ctx.beginPath();
+                    ctx.arc(bladeLen * 0.1 + c * bladeLen * 0.16, 0, bladeW * 0.24, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                const ax = bladeLen * 0.82;
+                ctx.strokeStyle = this.weapon.bladeColor || '#95a5a6';
+                ctx.lineWidth = bladeW * 0.42;
+                ctx.beginPath();
+                ctx.moveTo(ax, -bladeW * 0.9);
+                ctx.lineTo(ax, bladeW * 0.9);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(ax - bladeW * 0.55, -bladeW * 0.4);
+                ctx.lineTo(ax, -bladeW * 0.95);
+                ctx.lineTo(ax + bladeW * 0.55, -bladeW * 0.4);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(ax - bladeW * 0.65, bladeW * 0.45);
+                ctx.quadraticCurveTo(ax, bladeW * 1.4, ax + bladeW * 0.65, bladeW * 0.45);
+                ctx.stroke();
+
+                ctx.fillStyle = '#2c3e50';
+                ctx.beginPath();
+                ctx.arc(ax, 0, bladeW * 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case 'eel_whip': {
+                // Sinuous electric eel
+                ctx.strokeStyle = this.weapon.bladeColor || '#2ed573';
+                ctx.lineWidth = bladeW * 0.55;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(bladeLen * 0.3, -bladeW * 0.95, bladeLen * 0.6, bladeW * 0.95, bladeLen, 0);
+                ctx.stroke();
+
+                ctx.strokeStyle = this.weapon.glowColor || '#7bed9f';
+                ctx.lineWidth = bladeW * 0.18;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(bladeLen * 0.3, -bladeW * 0.95, bladeLen * 0.6, bladeW * 0.95, bladeLen, 0);
+                ctx.stroke();
+
+                ctx.fillStyle = '#1e90ff';
+                ctx.beginPath();
+                ctx.arc(bladeLen, 0, bladeW * 0.3, 0, Math.PI * 2);
+                ctx.fill();
+                break;
+            }
+            case 'sonic_lance': {
+                // Emitter housing and pulse cone
+                ctx.fillStyle = this.weapon.hiltColor || '#2f3542';
+                ctx.fillRect(0, -bladeW * 0.4, bladeLen * 0.3, bladeW * 0.8);
+
+                ctx.fillStyle = this.weapon.bladeColor || '#70a1ff';
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.3, -bladeW * 0.7);
+                ctx.lineTo(bladeLen, -bladeW * 0.15);
+                ctx.lineTo(bladeLen, bladeW * 0.15);
+                ctx.lineTo(bladeLen * 0.3, bladeW * 0.7);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = 'rgba(159, 216, 255, 0.85)';
+                ctx.lineWidth = 1.6 * zoom;
+                for (let p = 1; p < 4; p++) {
+                    ctx.beginPath();
+                    ctx.arc(bladeLen * 0.3, 0, bladeW * 0.3 * p, -0.75, 0.75);
+                    ctx.stroke();
+                }
+                break;
+            }
+            case 'drill_saw': {
+                // Motor block and diamond drill cone
+                ctx.fillStyle = this.weapon.hiltColor || '#2f3542';
+                ctx.fillRect(0, -bladeW * 0.35, bladeLen * 0.26, bladeW * 0.7);
+
+                ctx.fillStyle = this.weapon.bladeColor || '#ffa502';
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.26, -bladeW * 0.55);
+                ctx.lineTo(bladeLen, 0);
+                ctx.lineTo(bladeLen * 0.26, bladeW * 0.55);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = '#2f3542';
+                ctx.lineWidth = 2 * zoom;
+                for (let g = 1; g < 5; g++) {
+                    const gx = bladeLen * (0.26 + g * 0.145);
+                    const spread = bladeW * 0.45 * (1 - g / 6.2);
+                    ctx.beginPath();
+                    ctx.moveTo(gx, -spread);
+                    ctx.lineTo(gx + bladeLen * 0.055, spread);
+                    ctx.stroke();
+                }
+                break;
+            }
+            case 'kraken_tentacle': {
+                // Living tentacle with suckers
+                ctx.strokeStyle = this.weapon.bladeColor || '#8e44ad';
+                ctx.lineWidth = bladeW * 0.8;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(bladeLen * 0.35, -bladeW * 1.3, bladeLen * 0.55, bladeW * 1.2, bladeLen, bladeW * 0.35);
+                ctx.stroke();
+
+                ctx.strokeStyle = this.weapon.glowColor || '#e056fd';
+                ctx.lineWidth = bladeW * 0.24;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.bezierCurveTo(bladeLen * 0.35, -bladeW * 1.3, bladeLen * 0.55, bladeW * 1.2, bladeLen, bladeW * 0.35);
+                ctx.stroke();
+
+                ctx.fillStyle = '#f5f6fa';
+                for (let s = 1; s < 5; s++) {
+                    const t = s / 5;
+                    ctx.beginPath();
+                    ctx.arc(bladeLen * t, Math.sin(t * Math.PI) * -bladeW * 0.55, bladeW * 0.09, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                break;
+            }
+            case 'leviathan_jaw': {
+                // Twin jaws of serrated teeth
+                ctx.fillStyle = this.weapon.hiltColor || '#2d3436';
+                ctx.beginPath();
+                ctx.moveTo(0, -bladeW * 0.5);
+                ctx.lineTo(bladeLen * 0.85, -bladeW * 0.8);
+                ctx.lineTo(bladeLen, -bladeW * 0.1);
+                ctx.lineTo(0, -bladeW * 0.15);
+                ctx.closePath();
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(0, bladeW * 0.5);
+                ctx.lineTo(bladeLen * 0.85, bladeW * 0.8);
+                ctx.lineTo(bladeLen, bladeW * 0.1);
+                ctx.lineTo(0, bladeW * 0.15);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.fillStyle = '#f5f6fa';
+                for (let t = 0; t < 6; t++) {
+                    const tx = bladeLen * (0.08 + t * 0.135);
+                    ctx.beginPath();
+                    ctx.moveTo(tx, -bladeW * 0.62);
+                    ctx.lineTo(tx + bladeLen * 0.05, -bladeW * 0.16);
+                    ctx.lineTo(tx + bladeLen * 0.1, -bladeW * 0.62);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.moveTo(tx, bladeW * 0.62);
+                    ctx.lineTo(tx + bladeLen * 0.05, bladeW * 0.16);
+                    ctx.lineTo(tx + bladeLen * 0.1, bladeW * 0.62);
+                    ctx.closePath();
+                    ctx.fill();
+                }
+
+                ctx.strokeStyle = 'rgba(0, 206, 201, 0.9)';
+                ctx.lineWidth = 2 * zoom;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(bladeLen * 0.95, 0);
+                ctx.stroke();
+                break;
+            }
+            case 'abyss_scythe': {
+                // Crescent harvest blade
+                ctx.fillStyle = this.weapon.hiltColor || '#1e272e';
+                ctx.fillRect(0, -bladeW * 0.35, bladeLen * 0.38, bladeW * 0.7);
+
+                ctx.fillStyle = this.weapon.bladeColor || '#e056fd';
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.32, bladeW * 0.45);
+                ctx.quadraticCurveTo(bladeLen * 0.78, -bladeW * 1.25, bladeLen, -bladeW * 0.35);
+                ctx.quadraticCurveTo(bladeLen * 0.6, -bladeW * 0.1, bladeLen * 0.32, -bladeW * 0.15);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = this.weapon.glowColor || '#8e44ad';
+                ctx.lineWidth = 1.5 * zoom;
+                ctx.stroke();
+                break;
+            }
+            case 'crown_of_tides': {
+                // Royal trident-crown
+                ctx.fillStyle = this.weapon.hiltColor || '#0a3d62';
+                ctx.fillRect(0, -bladeW * 0.5, bladeLen * 0.16, bladeW);
+
+                ctx.strokeStyle = this.weapon.bladeColor || '#FFD740';
+                ctx.lineWidth = bladeW * 0.3;
+                for (let p = -1; p <= 1; p++) {
+                    ctx.beginPath();
+                    ctx.moveTo(bladeLen * 0.16, 0);
+                    ctx.lineTo(bladeLen * 0.78, p * bladeW * 1.05);
+                    ctx.stroke();
+                }
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.16, 0);
+                ctx.lineTo(bladeLen, 0);
+                ctx.stroke();
+
+                ctx.fillStyle = this.weapon.glowColor || '#00f7ff';
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.5, -bladeW * 0.45);
+                ctx.lineTo(bladeLen * 0.62, -bladeW * 1.05);
+                ctx.lineTo(bladeLen * 0.74, -bladeW * 0.45);
+                ctx.closePath();
+                ctx.fill();
+                break;
+            }
+            case 'meteor_maul': {
+                // Chain handle and molten hammer head
+                ctx.strokeStyle = '#6c5ce7';
+                ctx.lineWidth = bladeW * 0.3;
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.lineTo(bladeLen * 0.58, 0);
+                ctx.stroke();
+
+                ctx.fillStyle = this.weapon.hiltColor || '#2c3e50';
+                ctx.beginPath();
+                ctx.roundRect(bladeLen * 0.54, -bladeW * 1.4, bladeLen * 0.44, bladeW * 2.8, bladeW * 0.25);
+                ctx.fill();
+
+                ctx.strokeStyle = this.weapon.bladeColor || '#ff4757';
+                ctx.lineWidth = 2 * zoom;
+                ctx.beginPath();
+                ctx.moveTo(bladeLen * 0.62, -bladeW * 0.9);
+                ctx.lineTo(bladeLen * 0.73, -bladeW * 0.2);
+                ctx.lineTo(bladeLen * 0.64, bladeW * 0.4);
+                ctx.lineTo(bladeLen * 0.8, bladeW * 0.95);
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffa502';
+                ctx.beginPath();
+                ctx.arc(bladeLen * 0.76, 0, bladeW * 0.18, 0, Math.PI * 2);
+                ctx.fill();
                 break;
             }
             default: {

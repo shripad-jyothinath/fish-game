@@ -11,18 +11,21 @@ const BOT_NAMES = [
 ];
 
 class BotController {
-    constructor(fish) {
+    constructor(fish, difficulty = 0) {
         this.fish = fish;
+        // difficulty 0 (classic) → 1 (final challenge stage): sharper, bolder bots.
+        const d = Math.max(0, Math.min(1, Number(difficulty) || 0));
+        this.difficulty = d;
         this.state = 'scavenge';
         this.targetFish = null;
         this.targetFood = null;
         this.targetChest = null;
         this.targetPowerup = null;
         this.stateTimer = 0;
-        this.decisionInterval = 0.25;
+        this.decisionInterval = 0.25 - d * 0.1;
         this.timeSinceDecision = Math.random() * this.decisionInterval;
-        this.fearThreshold = 220;
-        this.huntRadius = 480;
+        this.fearThreshold = 220 - d * 90;
+        this.huntRadius = 480 + d * 220;
     }
 
     update(dt, allFish, foodManager) {

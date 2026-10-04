@@ -7,6 +7,34 @@ Last session summary: fixed + balanced the game, wrote 3 plans, scaffolded the m
 headless simulation harness, and started the API skeleton. No git commit yet. Two background tasks
 may be in flight (npm install, sim run) — verify before assuming.
 
+> **Update (website + accounts):** email/password accounts (scrypt + SQLite sessions) and
+> cross-device save sync live in `apps/api/src/{db,auth,save}.ts`; the Fastify server also serves
+> `apps/web` itself, so `npm run dev` → http://127.0.0.1:8080 is the whole website.
+> Menu UI has an account bar + auth modal (`apps/web/index.html`, `apps/web/src/api.js`) and the
+> buttons were restyled (no fake 3D/shine/pulse). Guest play still works; DB file is
+> `apps/api/data/fishio.db` (gitignored).
+>
+> **Update (Hedera layer):** full testnet integration built in `apps/api/src/hedera/`:
+> HCS match receipts, `$GOLD` HTS rewards + claims, NFT mints (HIP-412 metadata served by the
+> API), wallet linking by proof-of-ownership transfer (signature verify also implemented for
+> WalletConnect later), global leaderboard, `/api/v1/hedera/status`. Auto-provisioning of
+> topic/token/collection via `npm run hedera:setup -- --write-env`. **Testnet is provisioned and
+> live** (operator + topic/`$GOLD`/NFT ids in `apps/api/.env`, never committed); the first match
+> attestation was verified on the mirror node (`CONSENSUSSUBMITMESSAGE`, SUCCESS). Without
+> credentials the API still runs offline (`online:false`). Unit tests: `npm run api:test`.
+> **Limited editions:** item → max-copies map in `HEDERA_EDITION_LIMITS` (Golden Leviathan is
+> 1-of-1 by default), enforced by an atomic reservation in `store.reserveNftMint` before the
+> Hedera mint; each serial gets its own metadata URI and serial-varied SVG art.
+> Still to do: WalletConnect frontend, marketplace, mainnet.
+>
+> **Update (3D assets + arsenal):** 25 weapons with explicit tiers (`WEAPON_TIER_OVERRIDES`),
+> passives and in-game canvas art; each tier keeps its old gating. Shop 3D thumbnails use Three.js
+> (`apps/web/src/item3d.js`, Three vendored in `apps/web/vendor/`) for weapons & hats; **fish
+> species icons and the menu loadout showcase deliberately stayed 2D** (user preference — the
+> homepage preview is the original animated canvas fish). Blob shadows, environment map, 2D/emoji
+> fallback when WebGL is missing. Player name follows the account when signed in
+> (`syncPlayerName` in `apps/web/src/api.js`).
+
 ---
 
 ## 1. What this project is
@@ -54,8 +82,9 @@ root: package.json (npm workspaces: apps/*, packages/*), tsconfig.base.json, doc
 ## 3. Game state (apps/web) — what was changed and why
 
 The game itself came from https://github.com/shripad-jyothinath/fish-game (public, cloned). It is
-"Fish IO: Be The King": 14 weapons, 24 fish species, 12 hats, shop, 15 stage challenges, bosses,
-maps, frenzy mode. Two sets of fixes were applied:
+"Fish IO: Be The King": 25 weapons (11 premium additions: harpoon, coral staff, anchor flail,
+eel whip, sonic lance, trench drill, kraken grasps, leviathan jaw, abyss scythe, crown of tides,
+meteor maul), 24 fish species, 12 hats, shop, 15 stage challenges, bosses, maps, frenzy mode. Two sets of fixes were applied:
 
 1. **Crash fix:** `src/game.js` referenced a nonexistent `#levelModal` (2 places) which made PLAY
    throw. Now it runs `document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'))`.
@@ -68,8 +97,11 @@ maps, frenzy mode. Two sets of fixes were applied:
      `getMaxBotTier()`, `pickBotTier()`, `pickBotGear()`, `updateBotGear(dt)` (bots upgrade gear every
      3 levels up to the match cap, with gold sparkle), league-up announcements, leaderboard `Lv.N`
      badge, player spawn invulnerability 2.0 → 3.5s.
-   - Challenge stages: bot gear scales with stage (`(level-1)/14`); Stage 1 all tier-0; bosses keep
-     signature weapons.
+   - Challenge stages: enemy gear, starting level and aggression all scale with stage
+     ((level-1)/14); Stage 1 all tier-0; bosses get the strongest blade their stage tier allows
+     (stage-10 boss → tier-3 blade, final boss → dragon_horn tier-4). Rewards and targets scale
+     too (200 → 9,200 per stage; later stages take longer; boss bounties 500 + level·300).
+     Menu shows per-stage enemy tier + an under-geared warning (`getChallengeRecommendedTier`).
    - Verified in browser: stage 1 = 18/18 tier-0; late game (progress 1.0) = tier-4 bots appear;
      no console errors.
 
@@ -137,10 +169,13 @@ Check: `node_modules/` exists, `package-lock.json` exists, port 8137 listening.
   seed divergence, long match sanity, god-mode survival, stateHash stability, **bot tier gating**.
   Note: suite takes ~2 min because heavy tests run under `vm` — that is expected for now.
 - ✅ Sim runs end-to-end: `npm.cmd run game-core:sim` → 18000 frames, sane world state, stable hash.
-- ✅ Perf profiled: `node packages/game-core/bin/profile.js` → ~7.2 ms/frame avg (max ~27 ms), no
-  runaway arrays. Root cause is Node `vm` context overhead + per-frame scans; fix path is the ADR
-  follow-up (extract `entities.js`/`ai.js` into real ES modules). Server math: a 30 Hz room costs
-  ≈ 7 ms/tick ≈ 21% of one core → expect 1–2 rooms/process until that optimization lands.
+- ✅ Perf profiled: `node packages/game-core/bin/profile.js` → ~7.2 ms/frame avg on the original
+  machine (Node 24). On this dev box (Node 20.14) even the committed M0 baseline runs at
+  ~17–21 ms/frame, so the test's speed guard defaults to 30 ms/frame and can be overridden
+  with `SIM_PERF_MS_LIMIT`. Root cause is Node `vm` context overhead + per-frame scans; fix path
+  is the ADR follow-up (extract `entities.js`/`ai.js` into real ES modules). Server math: a
+  30 Hz room costs ≈ 7 ms/tick on the original box ≈ 21% of one core → expect 1–2 rooms/process
+  until that optimization lands.
 - ✅ Catalog seed works: `node apps/api/db/seed.mjs` → `apps/api/db/seeds/001_catalog.sql` (50 items).
 - ✅ Audio warning solved headlessly: `SoundEngine.prototype.init` is a no-op in the harness.
 
