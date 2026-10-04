@@ -1,0 +1,14 @@
+{
+  "name": "@fishio/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fish.IO backend: auth, matchmaking, results intake, economy.",
+  "scripts": {
+    "dev": "node src/index.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "fastify": "^5.2.0"
+  }
+}

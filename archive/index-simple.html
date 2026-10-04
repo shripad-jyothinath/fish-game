@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="theme-color" content="#04121f" />
+<title>Fish.io</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐟</text></svg>" />
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    overflow: hidden; background: #04121f;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none;
+    touch-action: none;
+  }
+  canvas { position: fixed; inset: 0; display: block; cursor: crosshair; }
+
+  /* ---------- HUD ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud button { pointer-events: auto; }
+
+  #score {
+    position: absolute; top: 14px; left: 16px;
+    color: #eaf6ff; font-size: 20px; font-weight: 700;
+    text-shadow: 0 2px 10px rgba(0,0,0,.6);
+    letter-spacing: .3px;
+  }
+  #score small { display:block; font-size: 12px; font-weight: 500; color:#9fc9e6; margin-top:2px; }
+
+  #mute {
+    position: absolute; top: 14px; left: 190px;
+    width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(140,210,255,.25);
+    background: rgba(8,30,50,.55); color: #cfeaff; font-size: 16px; cursor: pointer;
+    backdrop-filter: blur(4px);
+  }
+  #mute:hover { background: rgba(16,50,80,.7); }
+
+  #board {
+    position: absolute; top: 14px; right: 16px; width: 200px;
+    background: rgba(5,24,42,.6); border: 1px solid rgba(120,200,255,.22);
+    border-radius: 12px; padding: 10px 12px; color: #dff1ff;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  #board h3 {
+    margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
+    letter-spacing: 1.4px; color: #7fc4f0; font-weight: 700;
+  }
+  #board-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+  #board-list li {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 3px 0; color: #cfe8fa;
+  }
+  #board-list li .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #board-list li.me { color: #ffd166; font-weight: 700; }
+  #board-list li.gap { border-top: 1px dashed rgba(140,210,255,.3); margin-top: 4px; padding-top: 6px; }
+
+  #hint {
+    position: absolute; left: 0; right: 0; bottom: 18px; text-align: center;
+    color: #a8d4f0; font-size: 13px; text-shadow: 0 1px 8px rgba(0,0,0,.8);
+    transition: opacity 1.2s ease; opacity: 1;
+  }
+  #hint.fade { opacity: 0; }
+
+  #boost-btn {
+    position: fixed; right: 26px; bottom: 34px; z-index: 6;
+    width: 92px; height: 92px; border-radius: 50%;
+    border: 2px solid rgba(140,220,255,.5);
+    background: radial-gradient(circle at 35% 30%, rgba(90,200,255,.45), rgba(10,60,100,.55));
+    color: #eaf8ff; font-size: 15px; font-weight: 800; letter-spacing: 1px;
+    display: none; align-items: center; justify-content: center;
+    touch-action: none; cursor: pointer;
+  }
+  #boost-btn:active { background: radial-gradient(circle at 35% 30%, rgba(140,230,255,.65), rgba(20,90,140,.7)); }
+
+  /* ---------- Screens ---------- */
+  .screen {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; color: #eaf6ff;
+    background: radial-gradient(ellipse at 50% 40%, rgba(10,50,85,.55), rgba(2,10,20,.82));
+    backdrop-filter: blur(3px);
+  }
+  .screen.hidden { display: none; }
+  .screen h1 {
+    margin: 0; font-size: clamp(44px, 9vw, 84px); letter-spacing: 2px; font-weight: 900;
+    text-shadow: 0 6px 30px rgba(0,140,255,.45);
+  }
+  .screen h1 span { color: #4cc9f0; }
+  .screen p { margin: 0; color: #bcdcf2; font-size: 15px; }
+  .screen p.small { font-size: 13px; color: #86b4d4; margin-top: 6px; }
+
+  .screen input {
+    width: min(300px, 78vw); padding: 13px 16px; font-size: 16px; text-align: center;
+    border-radius: 12px; border: 1px solid rgba(120,200,255,.35);
+    background: rgba(6,26,44,.8); color: #eaf6ff; outline: none;
+  }
+  .screen input:focus { border-color: #4cc9f0; box-shadow: 0 0 0 3px rgba(76,201,240,.18); }
+
+  .btn {
+    padding: 14px 46px; font-size: 18px; font-weight: 800; letter-spacing: 1.5px;
+    color: #04202f; border: none; border-radius: 14px; cursor: pointer;
+    background: linear-gradient(180deg, #7fe3ff, #2aa7e0);
+    box-shadow: 0 8px 24px rgba(42,167,224,.45), inset 0 1px 0 rgba(255,255,255,.6);
+    transition: transform .12s ease, filter .12s ease;
+  }
+  .btn:hover { transform: translateY(-2px); filter: brightness(1.08); }
+  .btn:active { transform: translateY(0); }
+
+  #gameover h1 { color: #ff8a7a; text-shadow: 0 6px 30px rgba(255,80,60,.35); }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud" style="display:none">
+  <div id="score">Score: 0<small>Size: 20</small></div>
+  <button id="mute" title="Toggle sound">🔊</button>
+  <div id="board">
+    <h3>Leaderboard</h3>
+    <ol id="board-list"></ol>
+  </div>
+  <div id="hint">Move: mouse / WASD &nbsp;·&nbsp; Boost: hold click / Space &nbsp;·&nbsp; Eat smaller fish!</div>
+</div>
+
+<button id="boost-btn">BOOST</button>
+
+<div id="overlay" class="screen">
+  <h1>FISH<span>.io</span></h1>
+  <p>Eat smaller fish to grow. Don't get eaten.</p>
+  <input id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false" />
+  <button id="play-btn" class="btn">PLAY</button>
+  <p class="small">Mouse or WASD to swim &nbsp;·&nbsp; Hold click or Space to boost</p>
+</div>
+
+<div id="gameover" class="screen hidden">
+  <h1>EATEN!</h1>
+  <p id="final-stats"></p>
+  <button id="restart-btn" class="btn">PLAY AGAIN</button>
+  <p class="small">Tip: stay near fish slightly smaller than you — and boost only when it matters.</p>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================== Helpers ============================== */
+const TAU = Math.PI * 2;
+const rand = (a, b) => a + Math.random() * (b - a);
+const randInt = (a, b) => Math.floor(rand(a, b + 1));
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const angleDiff = (a, b) => ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI;
+function turnToward(a, b, max) { return a + clamp(angleDiff(a, b), -max, max); }
+function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/* ============================== Canvas ============================== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1, vignette = null;
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  vignette = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.42, W / 2, H / 2, Math.max(W, H) * 0.78);
+  vignette.addColorStop(0, 'rgba(0,0,0,0)');
+  vignette.addColorStop(1, 'rgba(0,8,18,0.5)');
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ============================== World state ============================== */
+const WORLD = { w: 4600, h: 3400 };
+const MAX_BOTS = 26;
+const START_SIZE = 20;
+const MIN_PLAYER_SIZE = 16;
+
+const BOT_NAMES = ['Bubbles', 'Nemo', 'Finley', 'Guppy', 'Mako', 'Coral', 'Splash', 'Wanda', 'Bloop',
+  'Kraken', 'Tuna', 'Sardine', 'Puffer', 'Angler', 'Manta', 'Reef', 'Tide', 'Pearl', 'Sharky',
+  'Dory', 'Gil', 'Bait', 'Chum', 'Flounder', 'Sushi', 'Wasabi', 'Kai', 'Luna', 'Marina', 'Nori'];
+
+let state = 'menu';           // menu | playing | dead
+let fishes = [];
+let particles = [];
+let bubbles = [];
+let plankton = [];
+let respawns = [];
+let player = null;
+let score = 0;
+let time = 0;
+let finalRank = 1;
+let muted = false;
+let isTouch = matchMedia('(pointer: coarse)').matches;
+
+const cam = { x: WORLD.w / 2, y: WORLD.h / 2, zoom: 1, targetX: WORLD.w / 2, targetY: WORLD.h / 2, targetZoom: 1, shake: 0 };
+
+/* ============================== Fish ============================== */
+function makeFish(o = {}) {
+  const hue = o.hue !== undefined ? o.hue : randInt(0, 360);
+  const f = {
+    x: 0, y: 0, angle: rand(0, TAU), size: START_SIZE,
+    body: `hsl(${hue}, 78%, 62%)`, fin: `hsl(${hue}, 78%, 46%)`,
+    name: 'Fish', isPlayer: false, alive: true,
+    wag: rand(0, TAU), think: 0, tx: 0, ty: 0, speedMul: 0.8,
+    bubbleTimer: 0,
+  };
+  Object.assign(f, o);
+  return f;
+}
+
+function baseSpeedFor(size) { return clamp(310 - size * 0.72, 125, 310); }
+
+function clampToWorld(f) {
+  const m = f.size * 1.6 + 8;
+  if (f.x < m) f.x = m;
+  if (f.x > WORLD.w - m) f.x = WORLD.w - m;
+  if (f.y < m) f.y = m;
+  if (f.y > WORLD.h - m) f.y = WORLD.h - m;
+}
+
+function botCount() { let n = 0; for (const f of fishes) if (!f.isPlayer && f.alive) n++; return n; }
+
+function spawnBot() {
+  const ps = (player && player.alive) ? player.size : START_SIZE;
+  const r = Math.random();
+  let s;
+  if (r < 0.58) s = rand(9, Math.max(13, ps * 0.82));
+  else if (r < 0.91) s = rand(ps * 0.9, ps * 1.5);
+  else s = rand(ps * 1.5, ps * 2.3);
+  s = clamp(s, 9, 200);
+
+  let x = 0, y = 0, tries = 0;
+  do {
+    x = rand(90, WORLD.w - 90);
+    y = rand(90, WORLD.h - 90);
+    tries++;
+  } while (player && tries < 40 && Math.hypot(x - player.x, y - player.y) < 750 + ps * 2.5);
+
+  const name = BOT_NAMES[randInt(0, BOT_NAMES.length - 1)] + (Math.random() < 0.22 ? ' ' + randInt(1, 99) : '');
+  const bot = makeFish({ x, y, size: s, name });
+  fishes.push(bot);
+}
+
+/* ============================== Input ============================== */
+const keys = Object.create(null);
+const pointer = { sx: 0, sy: 0, active: false, boost: false };
+let touchBoost = false;
+
+window.addEventListener('pointermove', e => { pointer.sx = e.clientX; pointer.sy = e.clientY; pointer.active = true; });
+canvas.addEventListener('pointerdown', e => {
+  pointer.sx = e.clientX; pointer.sy = e.clientY; pointer.active = true;
+  if (e.pointerType !== 'touch') pointer.boost = true;
+  if (e.pointerType === 'touch') isTouch = true;
+});
+window.addEventListener('pointerup', () => { pointer.boost = false; touchBoost = false; });
+window.addEventListener('pointercancel', () => { pointer.boost = false; touchBoost = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+const boostBtn = document.getElementById('boost-btn');
+boostBtn.addEventListener('pointerdown', e => { e.preventDefault(); touchBoost = true; });
+window.addEventListener('pointerup', () => { touchBoost = false; });
+
+/* ============================== Audio ============================== */
+let ac = null;
+function ensureAudio() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; } }
+  if (ac && ac.state === 'suspended') ac.resume();
+}
+function tone(f0, f1, dur, type, vol) {
+  if (muted || !ac) return;
+  try {
+    const t = ac.currentTime;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t);
+    o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination);
+    o.start(t); o.stop(t + dur + 0.03);
+  } catch (e) { /* ignore */ }
+}
+const sfxEat = s => tone(360 + Math.min(300, s * 3), 720 + Math.min(500, s * 4), 0.09, 'sine', 0.05);
+const sfxDeath = () => tone(340, 55, 0.55, 'sawtooth', 0.07);
+
+/* ============================== Particles / Bubbles ============================== */
+function spawnEatParticles(f) {
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, TAU), sp = rand(30, 170);
+    particles.push({
+      x: f.x, y: f.y,
+      vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: rand(0.3, 0.75), max: 0.75,
+      r: rand(2, 5) * Math.max(0.6, Math.min(2, f.size / 24)),
+      color: f.body,
+    });
+  }
+}
+function spawnBubble(x, y, vx, vy, r, life) {
+  bubbles.push({ x, y, vx, vy, r, life, max: life });
+}
+
+/* ============================== Game flow ============================== */
+const overlay = document.getElementById('overlay');
+const gameover = document.getElementById('gameover');
+const nameInput = document.getElementById('name-input');
+const playBtn = document.getElementById('play-btn');
+const restartBtn = document.getElementById('restart-btn');
+const finalStats = document.getElementById('final-stats');
+const scoreEl = document.getElementById('score');
+const boardList = document.getElementById('board-list');
+const hudEl = document.getElementById('hud');
+const hintEl = document.getElementById('hint');
+const muteBtn = document.getElementById('mute');
+
+function initMenuWorld() {
+  fishes = [];
+  for (let i = 0; i < 20; i++) {
+    const bot = makeFish({
+      x: rand(90, WORLD.w - 90), y: rand(90, WORLD.h - 90),
+      size: rand(14, 64),
+    });
+    bot.name = BOT_NAMES[randInt(0, BOT_NAMES.length - 1)];
+    fishes.push(bot);
+  }
+  initPlankton();
+}
+
+function initPlankton() {
+  plankton = [];
+  for (let i = 0; i < 520; i++) {
+    plankton.push({ x: rand(0, WORLD.w), y: rand(0, WORLD.h), r: rand(0.7, 2.2), a: rand(0.04, 0.12), p: rand(0, TAU) });
+  }
+}
+
+function startGame() {
+  ensureAudio();
+  const name = (nameInput.value.trim() || 'You').slice(0, 12);
+  score = 0; time = 0;
+  respawns = []; particles = []; bubbles = [];
+  fishes = [];
+  player = makeFish({
+    x: WORLD.w / 2, y: WORLD.h / 2, size: START_SIZE,
+    name, isPlayer: true,
+    body: '#ffd166', fin: '#ef8a3c', hue: 45,
+  });
+  fishes.push(player);
+  for (let i = 0; i < MAX_BOTS; i++) spawnBot();
+
+  cam.x = cam.targetX = player.x;
+  cam.y = cam.targetY = player.y;
+  cam.zoom = cam.targetZoom = 1.15;
+  cam.shake = 0;
+
+  state = 'playing';
+  overlay.classList.add('hidden');
+  gameover.classList.add('hidden');
+  hudEl.style.display = 'block';
+  hintEl.classList.remove('fade');
+  boostBtn.style.display = isTouch ? 'flex' : 'none';
+  updateBoard();
+}
+
+function playerDied() {
+  if (state !== 'playing') return;
+  state = 'dead';
+  const size = Math.round(player.size);
+  finalRank = 1 + fishes.filter(f => f.alive && f !== player && f.size > player.size).length;
+  const total = fishes.filter(f => f.alive).length;
+  player.alive = false;
+  spawnEatParticles(player);
+  cam.shake = 12;
+  sfxDeath();
+  // Removal from `fishes` happens at the end of the update pass.
+  finalStats.textContent = `Score ${score} · Size ${size} · Rank #${finalRank} of ${total}`;
+  gameover.classList.remove('hidden');
+  boostBtn.style.display = 'none';
+}
+
+playBtn.addEventListener('click', startGame);
+restartBtn.addEventListener('click', startGame);
+nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') startGame(); });
+
+muteBtn.addEventListener('click', () => {
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+});
+
+/* ============================== Update ============================== */
+function updatePlayer(dt) {
+  const p = player;
+  p.baseSpeed = clamp(335 - p.size * 0.75, 165, 335);
+
+  let desired = null;
+  let kx = 0, ky = 0;
+  if (keys.KeyA || keys.ArrowLeft) kx--;
+  if (keys.KeyD || keys.ArrowRight) kx++;
+  if (keys.KeyW || keys.ArrowUp) ky--;
+  if (keys.KeyS || keys.ArrowDown) ky++;
+
+  if (kx || ky) {
+    desired = Math.atan2(ky, kx);
+  } else if (pointer.active) {
+    const wx = cam.x + (pointer.sx - W / 2) / cam.zoom;
+    const wy = cam.y + (pointer.sy - H / 2) / cam.zoom;
+    const dx = wx - p.x, dy = wy - p.y;
+    if (dx * dx + dy * dy > 25) desired = Math.atan2(dy, dx);
+  }
+  if (desired !== null) p.angle = turnToward(p.angle, desired, 7.5 * dt);
+
+  const boosting = (pointer.boost || keys.Space || touchBoost) && p.size > MIN_PLAYER_SIZE + 1;
+  if (boosting) {
+    p.size = Math.max(MIN_PLAYER_SIZE, p.size - 9 * dt);
+    p.bubbleTimer -= dt;
+    if (p.bubbleTimer <= 0) {
+      p.bubbleTimer = 0.03;
+      const bx = p.x - Math.cos(p.angle) * p.size * 1.3;
+      const by = p.y - Math.sin(p.angle) * p.size * 1.3;
+      spawnBubble(bx + rand(-6, 6), by + rand(-6, 6), rand(-14, 14), -rand(30, 70), rand(2, 5), rand(0.5, 1.1));
+    }
+  }
+
+  const sp = p.baseSpeed * (boosting ? 2.05 : 1);
+  p.x += Math.cos(p.angle) * sp * dt;
+  p.y += Math.sin(p.angle) * sp * dt;
+  p.wag += dt * (6 + sp * 0.03);
+  clampToWorld(p);
+
+  cam.targetX = p.x;
+  cam.targetY = p.y;
+  cam.targetZoom = clamp(1.18 - (p.size - 18) * 0.0068, 0.52, 1.18);
+}
+
+function updateBot(f, dt) {
+  f.think -= dt;
+
+  let prey = null, pred = null, preyD = Infinity, predD = Infinity;
+  for (const g of fishes) {
+    if (g === f || !g.alive) continue;
+    const d = dist2(f, g);
+    if (d > 900 * 900) continue;
+    if (g.size * 1.12 < f.size) { if (d < preyD) { preyD = d; prey = g; } }
+    else if (f.size * 1.12 < g.size) { if (d < predD) { predD = d; pred = g; } }
+  }
+
+  let tx, ty, mul = 0.75;
+  if (pred && predD < 520 * 520) {
+    tx = 2 * f.x - pred.x;
+    ty = 2 * f.y - pred.y;
+    mul = 1.35;
+  } else if (prey && preyD < 700 * 700) {
+    tx = prey.x; ty = prey.y;
+    mul = 1.2;
+  } else {
+    if (f.think <= 0 || Math.hypot(f.tx - f.x, f.ty - f.y) < 70) {
+      f.think = rand(1.5, 4.5);
+      f.tx = clamp(f.x + rand(-750, 750), 70, WORLD.w - 70);
+      f.ty = clamp(f.y + rand(-750, 750), 70, WORLD.h - 70);
+    }
+    tx = f.tx; ty = f.ty;
+  }
+
+  f.angle = turnToward(f.angle, Math.atan2(ty - f.y, tx - f.x), 3.2 * dt);
+  f.speedMul = lerp(f.speedMul, mul, Math.min(1, dt * 3));
+
+  const sp = baseSpeedFor(f.size) * f.speedMul;
+  f.x += Math.cos(f.angle) * sp * dt;
+  f.y += Math.sin(f.angle) * sp * dt;
+  f.wag += dt * (5 + sp * 0.03);
+  clampToWorld(f);
+}
+
+function eat(big, small) {
+  small.alive = false;
+  const gain = small.size;
+  big.size = Math.min(260, big.size + gain * 0.2 + 0.8);
+  spawnEatParticles(small);
+
+  if (big.isPlayer) {
+    score += Math.round(6 + gain * 1.5);
+    cam.shake = Math.min(9, 3 + gain * 0.07);
+    sfxEat(gain);
+  }
+  if (small.isPlayer) {
+    playerDied();
+  } else {
+    respawns.push(time + rand(0.6, 1.8));
+  }
+}
+
+function updateCamera(dt) {
+  const k = Math.min(1, dt * 5);
+  cam.x = lerp(cam.x, cam.targetX, k);
+  cam.y = lerp(cam.y, cam.targetY, k);
+  cam.zoom = lerp(cam.zoom, cam.targetZoom, Math.min(1, dt * 3));
+  cam.shake = Math.max(0, cam.shake - dt * 16);
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    p.vx *= (1 - 2.2 * dt); p.vy *= (1 - 2.2 * dt);
+    p.vy -= 14 * dt;
+  }
+}
+
+function updateBubbles(dt) {
+  // ambient bubbles around the camera
+  const halfW = W / (2 * cam.zoom), halfH = H / (2 * cam.zoom);
+  if (bubbles.length < 150 && Math.random() < 0.4) {
+    spawnBubble(
+      cam.x + rand(-halfW, halfW),
+      cam.y + rand(-halfH, halfH) + halfH * 0.6,
+      0, rand(18, 55), rand(1.5, 5), 999
+    );
+  }
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    b.life -= dt;
+    b.y -= b.vy * dt;
+    b.x += (b.vx + Math.sin(time * 2 + b.y * 0.01) * 7) * dt;
+    if (b.life <= 0 || b.y < cam.y - halfH - 120) bubbles.splice(i, 1);
+  }
+}
+
+function update(dt) {
+  time += dt;
+
+  if (state === 'playing' && player && player.alive) updatePlayer(dt);
+
+  for (const f of fishes) if (!f.isPlayer) updateBot(f, dt);
+
+  // eating collisions
+  for (let i = 0; i < fishes.length; i++) {
+    const a = fishes[i];
+    if (!a.alive) continue;
+    for (let j = i + 1; j < fishes.length; j++) {
+      const b = fishes[j];
+      if (!b.alive) continue;
+      const big = a.size > b.size ? a : b;
+      const small = big === a ? b : a;
+      if (big.size < small.size * 1.12) continue;
+      const eatDist = big.size * 1.3 + small.size * 0.6;
+      if (dist2(big, small) > eatDist * eatDist) continue;
+      eat(big, small);
+    }
+  }
+
+  fishes = fishes.filter(f => f.alive);
+
+  // respawn bots
+  for (let i = respawns.length - 1; i >= 0; i--) {
+    if (respawns[i] <= time) {
+      respawns.splice(i, 1);
+      if (botCount() < MAX_BOTS) spawnBot();
+    }
+  }
+
+  if (state === 'menu') {
+    cam.targetX = WORLD.w / 2 + Math.cos(time * 0.06) * 800;
+    cam.targetY = WORLD.h / 2 + Math.sin(time * 0.05) * 420;
+    cam.targetZoom = 0.85;
+  }
+
+  updateCamera(dt);
+  updateParticles(dt);
+  updateBubbles(dt);
+
+  if (state !== 'menu' && player) {
+    scoreEl.innerHTML = `Score: ${score}<small>Size: ${Math.round(player.size)}</small>`;
+  }
+}
+
+/* ============================== Leaderboard ============================== */
+let boardTimer = 0;
+function updateBoard() {
+  const sorted = [...fishes].sort((a, b) => b.size - a.size);
+  const rows = [];
+  sorted.slice(0, 5).forEach((f, i) => {
+    rows.push(`<li class="${f.isPlayer ? 'me' : ''}"><span class="nm">${i + 1}. ${escapeHtml(f.name)}</span><span>${Math.round(f.size)}</span></li>`);
+  });
+  if (player && player.alive) {
+    const idx = sorted.indexOf(player);
+    if (idx >= 5) rows.push(`<li class="me gap"><span class="nm">${idx + 1}. ${escapeHtml(player.name)}</span><span>${Math.round(player.size)}</span></li>`);
+  }
+  boardList.innerHTML = rows.join('');
+}
+
+/* ============================== Rendering ============================== */
+function drawBackground() {
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, '#0a3a60');
+  g.addColorStop(0.55, '#07294a');
+  g.addColorStop(1, '#031425');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawRays() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 4; i++) {
+    const x = (i * 0.27 + 0.05) * W + Math.sin(time * 0.1 + i * 2.1) * 90;
+    ctx.save();
+    ctx.translate(x, -H * 0.15);
+    ctx.rotate(0.17 + Math.sin(time * 0.07 + i * 1.7) * 0.035);
+    const g = ctx.createLinearGradient(0, 0, 0, H * 1.7);
+    g.addColorStop(0, 'rgba(150,220,255,0.09)');
+    g.addColorStop(1, 'rgba(150,220,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 80 + i * 26, H * 1.7);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+function drawPlankton() {
+  const halfW = W / (2 * cam.zoom) + 40, halfH = H / (2 * cam.zoom) + 40;
+  for (const p of plankton) {
+    if (Math.abs(p.x - cam.x) > halfW || Math.abs(p.y - cam.y) > halfH) continue;
+    ctx.globalAlpha = p.a * (0.7 + 0.3 * Math.sin(time * 1.4 + p.p));
+    ctx.fillStyle = '#cfeeff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawBubbles() {
+  ctx.strokeStyle = 'rgba(190,235,255,0.5)';
+  ctx.fillStyle = 'rgba(190,235,255,0.10)';
+  for (const b of bubbles) {
+    const a = b.life >= 999 ? 0.35 : clamp(b.life / b.max, 0, 1) * 0.8;
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, TAU);
+    ctx.fill();
+    ctx.lineWidth = Math.max(0.6, b.r * 0.22);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawFish(f) {
+  const s = f.size;
+
+  // name label (world space, above the fish)
+  if (s > 13 || f.isPlayer) {
+    ctx.fillStyle = f.isPlayer ? 'rgba(255,235,170,0.95)' : 'rgba(220,240,255,0.72)';
+    ctx.font = `600 ${clamp(s * 0.52, 11, 26)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(f.name, f.x, f.y - s * 1.45);
+  }
+
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.angle);
+
+  const wag = Math.sin(f.wag) * 0.5;
+
+  // tail
+  ctx.save();
+  ctx.translate(-s * 1.02, 0);
+  ctx.rotate(wag);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(-s * 0.95, -s * 0.85, -s * 1.4, -s * 0.18);
+  ctx.quadraticCurveTo(-s * 0.8, 0, -s * 1.4, s * 0.18);
+  ctx.quadraticCurveTo(-s * 0.95, s * 0.85, 0, 0);
+  ctx.fillStyle = f.fin;
+  ctx.fill();
+  ctx.restore();
+
+  // dorsal fin
+  ctx.beginPath();
+  ctx.moveTo(-s * 0.35, -s * 0.68);
+  ctx.quadraticCurveTo(0, -s * 1.25, s * 0.45, -s * 0.6);
+  ctx.quadraticCurveTo(0, -s * 0.55, -s * 0.35, -s * 0.68);
+  ctx.fillStyle = f.fin;
+  ctx.fill();
+
+  // side fin (wags with tail)
+  ctx.save();
+  ctx.translate(s * 0.05, s * 0.15);
+  ctx.rotate(0.5 + wag * 0.5);
+  ctx.beginPath();
+  ctx.ellipse(0, s * 0.25, s * 0.42, s * 0.2, 0.4, 0, TAU);
+  ctx.fillStyle = f.fin;
+  ctx.fill();
+  ctx.restore();
+
+  // body
+  if (f.isPlayer) {
+    ctx.shadowColor = 'rgba(255,220,120,0.85)';
+    ctx.shadowBlur = 18;
+  }
+  ctx.beginPath();
+  ctx.ellipse(0, 0, s * 1.12, s * 0.76, 0, 0, TAU);
+  ctx.fillStyle = f.body;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // belly highlight
+  ctx.globalAlpha = 0.22;
+  ctx.beginPath();
+  ctx.ellipse(s * 0.05, s * 0.3, s * 0.75, s * 0.34, 0.06, 0, TAU);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // player outline
+  if (f.isPlayer) {
+    ctx.lineWidth = Math.max(1.6, s * 0.07);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.stroke();
+  }
+
+  // eye
+  ctx.beginPath();
+  ctx.arc(s * 0.6, -s * 0.2, s * 0.21, 0, TAU);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(s * 0.67, -s * 0.2, s * 0.1, 0, TAU);
+  ctx.fillStyle = '#12212e';
+  ctx.fill();
+
+  // mouth
+  ctx.beginPath();
+  ctx.arc(s * 0.98, s * 0.1, s * 0.16, -0.9, 0.6);
+  ctx.lineWidth = Math.max(1, s * 0.055);
+  ctx.strokeStyle = 'rgba(10,25,40,0.55)';
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.globalAlpha = clamp(p.life / p.max, 0, 1) * 0.9;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawMinimap() {
+  const mw = 168, mh = Math.round(mw * WORLD.h / WORLD.w);
+  const x = W - mw - 16, y = H - mh - 16;
+  const ps = player && player.alive ? player.size : START_SIZE;
+
+  ctx.fillStyle = 'rgba(3,18,32,0.6)';
+  ctx.strokeStyle = 'rgba(120,200,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, mw, mh, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  for (const f of fishes) {
+    const px = x + (f.x / WORLD.w) * mw;
+    const py = y + (f.y / WORLD.h) * mh;
+    if (f.isPlayer) {
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(px, py, 3.2, 0, TAU); ctx.fill();
+    } else {
+      const danger = f.size > ps * 1.12;
+      ctx.fillStyle = danger ? 'rgba(255,110,90,0.85)' : 'rgba(120,230,160,0.8)';
+      ctx.beginPath(); ctx.arc(px, py, danger ? 2.4 : 1.8, 0, TAU); ctx.fill();
+    }
+  }
+}
+
+function render() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  drawBackground();
+  drawRays();
+
+  ctx.save();
+  const shx = cam.shake > 0.2 ? rand(-cam.shake, cam.shake) : 0;
+  const shy = cam.shake > 0.2 ? rand(-cam.shake, cam.shake) : 0;
+  ctx.translate(W / 2 + shx, H / 2 + shy);
+  ctx.scale(cam.zoom, cam.zoom);
+  ctx.translate(-cam.x, -cam.y);
+
+  drawPlankton();
+  drawBubbles();
+
+  const sorted = fishes.slice().sort((a, b) => a.size - b.size);
+  for (const f of sorted) drawFish(f);
+  drawParticles();
+
+  ctx.restore();
+
+  if (state !== 'menu') drawMinimap();
+
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/* ============================== Main loop ============================== */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+
+  update(dt);
+
+  boardTimer -= dt;
+  if (boardTimer <= 0 && state !== 'menu') { boardTimer = 0.3; updateBoard(); }
+
+  render();
+  requestAnimationFrame(frame);
+}
+
+initMenuWorld();
+requestAnimationFrame(frame);
+
+// Tiny hook for debugging/tests (harmless in normal play).
+window.__fishDebug = {
+  get state() { return state; },
+  get score() { return score; },
+  get player() { return player; },
+  get fishes() { return fishes; },
+  get cam() { return cam; },
+  get rank() { return finalRank; },
+};
+
+})();
+</script>
+</body>
+</html>

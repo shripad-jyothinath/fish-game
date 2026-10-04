@@ -497,6 +497,8 @@ class GameEngine {
         this.botControllers = [];
         this.bossFish = null;
         this.bossWave = 1;
+        this.gearCheckTimer = 0;
+        this.lastAnnouncedTier = 0;
 
         // 4. Re-initialize themed map decor
         this.initMapDecor();
@@ -532,7 +534,7 @@ class GameEngine {
             false,
             this.shop.selectedHat
         );
-        this.player.invulnerableTimer = 2.0;
+        this.player.invulnerableTimer = 3.5;
 
         // Immediate camera alignment
         this.camera.x = startX;
@@ -579,8 +581,9 @@ class GameEngine {
             const bx = 200 + Math.random() * (this.worldWidth - 400);
             const by = 200 + Math.random() * (this.worldHeight - 400);
             const botName = BOT_NAMES[i % BOT_NAMES.length];
-            const botSkin = skinsList[Math.floor(Math.random() * skinsList.length)];
-            const botWeapon = weaponsList[Math.floor(Math.random() * weaponsList.length)];
+            const cGear = this.pickBotGear(this.getMaxBotTier());
+            const botSkin = cGear.skinId;
+            const botWeapon = cGear.weaponId;
             const botHat = hatsList[Math.floor(Math.random() * hatsList.length)];
 
             const bot = new Fish(bx, by, botName, botSkin, botWeapon, true, botHat);
@@ -590,13 +593,96 @@ class GameEngine {
 
         document.getElementById('mainMenu').classList.add('hidden');
         document.getElementById('shopModal').classList.add('hidden');
-        document.getElementById('levelModal').classList.add('hidden');
+        document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'));
         document.getElementById('gameOverModal').classList.add('hidden');
         document.getElementById('hudOverlay').classList.remove('hidden');
 
         if (this.soundEngine) {
             this.soundEngine.init();
             this.soundEngine.resume();
+        }
+    }
+
+    // ===== Gear progression for bots =====
+    // 0.0 = match start (starter gear only) ... 1.0 = late game (everything allowed)
+    getMatchProgress() {
+        if (this.gameMode === 'challenge' && this.challengeData) {
+            // Stage number drives difficulty in level challenges
+            return Math.min(1, (this.challengeData.level - 1) / 14);
+        }
+        const timePart = Math.min(1, this.matchTime / 180) * 0.45;
+        const lvlPart = Math.min(1, Math.max(0, (this.player ? this.player.level : 1) - 1) / 10) * 0.55;
+        let prog = Math.min(1, timePart + lvlPart);
+        // Players who bring top-tier gear face tougher bots too
+        const myTier = (window.getWeaponTier ? window.getWeaponTier(this.shop.selectedWeapon) : 0);
+        prog = Math.max(prog, (myTier / 4) * 0.6);
+        return prog;
+    }
+
+    getMaxBotTier() {
+        const max = (typeof WEAPON_TIERS !== 'undefined') ? WEAPON_TIERS.length - 1 : 4;
+        return Math.min(max, Math.round(this.getMatchProgress() * max));
+    }
+
+    pickBotTier(maxTier) {
+        if (maxTier <= 0) return 0;
+        const r = Math.random();
+        if (r < 0.10) return Math.max(0, maxTier - 2);
+        if (r < 0.35) return maxTier - 1;
+        return maxTier;
+    }
+
+    pickBotGear(maxTier) {
+        const t = this.pickBotTier(maxTier);
+        const wt = (typeof WEAPON_TIERS !== 'undefined') ? WEAPON_TIERS : [['coral_dagger']];
+        const ft = (typeof FISH_TIERS !== 'undefined') ? FISH_TIERS : [['baby_shark']];
+        const wList = wt[Math.min(t, wt.length - 1)] || wt[0];
+        const fList = ft[Math.min(t, ft.length - 1)] || ft[0];
+        return {
+            tier: t,
+            weaponId: wList[Math.floor(Math.random() * wList.length)],
+            skinId: fList[Math.floor(Math.random() * fList.length)]
+        };
+    }
+
+    // Bots that level up slowly upgrade into the strongest tier the match allows.
+    updateBotGear(dt) {
+        this.gearCheckTimer = (this.gearCheckTimer || 0) + dt;
+        if (this.gearCheckTimer < 15) return; // ~4 checks/sec at 60fps
+        this.gearCheckTimer = 0;
+
+        const capTier = this.getMaxBotTier();
+
+        if (capTier > (this.lastAnnouncedTier || 0) && this.matchTime > 2 && this.gameMode !== 'challenge') {
+            this.lastAnnouncedTier = capTier;
+            const tierName = (window.GEAR_TIER_NAMES && window.GEAR_TIER_NAMES[capTier]) || `Tier ${capTier + 1}`;
+            this.showAnnouncement(`⚔️ LEAGUE UP: ${tierName} blades are entering the reef!`);
+        }
+
+        for (const bot of this.bots) {
+            if (!bot || bot.isDead || bot.isBoss) continue;
+            const curTier = (window.getWeaponTier ? window.getWeaponTier(bot.weaponId) : 0);
+            if (bot.level < (bot.gearUpLevel || 3)) continue;
+            if (curTier >= capTier) continue; // wait until the match allows stronger gear
+
+            const newTier = Math.min(capTier, curTier + 1);
+            const wList = (typeof WEAPON_TIERS !== 'undefined' && WEAPON_TIERS[newTier]) || [];
+            const fList = (typeof FISH_TIERS !== 'undefined' && FISH_TIERS[newTier]) || [];
+            if (wList.length) {
+                bot.weaponId = wList[Math.floor(Math.random() * wList.length)];
+                bot.weapon = WEAPON_SKINS[bot.weaponId] || bot.weapon;
+            }
+            if (fList.length) {
+                bot.skinId = fList[Math.floor(Math.random() * fList.length)];
+                bot.skin = FISH_SKINS[bot.skinId] || bot.skin;
+                bot.baseSpeed = 4.4 * (bot.skin.stats && bot.skin.stats.speed || 1.0);
+                bot.turnSpeed = 0.14 * (bot.skin.stats && bot.skin.stats.turn || 1.0);
+                bot.maxStamina = 100 * (bot.skin.stats && bot.skin.stats.boost || 1.0);
+            }
+            bot.gearUpLevel = bot.level + 3;
+            bot.updateDimensions();
+            bot.invulnerableTimer = Math.max(bot.invulnerableTimer, 0.6);
+            if (this.particles) this.particles.addShockwave(bot.x, bot.y, bot.radius * 2.2, '#ffd700');
         }
     }
 
@@ -629,7 +715,7 @@ class GameEngine {
             false,
             this.shop.selectedHat
         );
-        this.player.invulnerableTimer = 2.0;
+        this.player.invulnerableTimer = 3.5;
 
         // Immediate camera alignment to prevent blank screen
         this.camera.x = startX;
@@ -651,8 +737,9 @@ class GameEngine {
             const bx = 200 + Math.random() * (this.worldWidth - 400);
             const by = 200 + Math.random() * (this.worldHeight - 400);
             const botName = BOT_NAMES[i % BOT_NAMES.length] + (Math.random() < 0.3 ? Math.floor(Math.random() * 99) : '');
-            const botSkin = skinsList[Math.floor(Math.random() * skinsList.length)];
-            const botWeapon = weaponsList[Math.floor(Math.random() * weaponsList.length)];
+            const gear = this.pickBotGear(this.getMaxBotTier());
+            const botSkin = gear.skinId;
+            const botWeapon = gear.weaponId;
             const botHat = hatsList[Math.floor(Math.random() * hatsList.length)];
 
             const bot = new Fish(bx, by, botName, botSkin, botWeapon, true, botHat);
@@ -662,7 +749,7 @@ class GameEngine {
 
         document.getElementById('mainMenu').classList.add('hidden');
         document.getElementById('shopModal').classList.add('hidden');
-        document.getElementById('levelModal').classList.add('hidden');
+        document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.add('hidden'));
         document.getElementById('gameOverModal').classList.add('hidden');
         document.getElementById('hudOverlay').classList.remove('hidden');
 
@@ -680,8 +767,9 @@ class GameEngine {
         const bx = 200 + Math.random() * (this.worldWidth - 400);
         const by = 200 + Math.random() * (this.worldHeight - 400);
         const botName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)] + (Math.random() < 0.4 ? Math.floor(Math.random() * 99) : '');
-        const botSkin = skinsList[Math.floor(Math.random() * skinsList.length)];
-        const botWeapon = weaponsList[Math.floor(Math.random() * weaponsList.length)];
+        const gear = this.pickBotGear(this.getMaxBotTier());
+        const botSkin = gear.skinId;
+        const botWeapon = gear.weaponId;
         const botHat = hatsList[Math.floor(Math.random() * hatsList.length)];
 
         const bot = new Fish(bx, by, botName, botSkin, botWeapon, true, botHat);
@@ -934,6 +1022,7 @@ class GameEngine {
             this.spawnSingleBot();
         }
 
+        this.updateBotGear(dt);
         this.updateHUD();
     }
 
@@ -1221,7 +1310,7 @@ class GameEngine {
                 html += `
                     <div class="lb-row ${isMe ? 'me' : ''} ${f.isKing ? 'king' : ''}">
                         <span class="lb-rank">${i === 0 ? '👑' : `#${i + 1}`}</span>
-                        <span class="lb-name">${f.name}</span>
+                        <span class="lb-name">${f.name}<span style="opacity:.65;font-size:.72em;margin-left:4px;">Lv.${f.level}</span></span>
                         <span class="lb-score">${f.score}</span>
                     </div>
                 `;

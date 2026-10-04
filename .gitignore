@@ -1,0 +1,35 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.*
+!.env.example
+keys/
+*.pem
+
+# logs & temp
+*.log
+logs/
+tmp/
+
+# editors / os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# test & coverage
+coverage/
+.nyc_output/
+
+# python (local dev server)
+__pycache__/
+.venv/

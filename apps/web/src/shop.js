@@ -1004,6 +1004,34 @@ class ShopManager {
     }
 }
 
+// ===== Gear Progression Tiers =====
+// Weapons & fish species are grouped into 5 cost-based tiers. Early matches only
+// face starter gear; stronger loadouts appear as the player levels up / match progresses.
+function buildGearTiers(dict, tierCount = 5) {
+    const items = Object.keys(dict).map(k => dict[k]).sort((a, b) => (a.cost || 0) - (b.cost || 0));
+    const tiers = Array.from({ length: tierCount }, () => []);
+    items.forEach((item, i) => {
+        const t = Math.min(tierCount - 1, Math.floor((i / items.length) * tierCount));
+        tiers[t].push(item.id);
+    });
+    return tiers;
+}
+const WEAPON_TIERS = buildGearTiers(WEAPON_SKINS, 5);
+const FISH_TIERS = buildGearTiers(FISH_SKINS, 5);
+const GEAR_TIER_NAMES = ['Rusty', 'Sharp', 'Forged', 'Exotic', 'Legendary'];
+
+window.WEAPON_TIERS = WEAPON_TIERS;
+window.FISH_TIERS = FISH_TIERS;
+window.GEAR_TIER_NAMES = GEAR_TIER_NAMES;
+window.getWeaponTier = function (id) {
+    for (let t = 0; t < WEAPON_TIERS.length; t++) if (WEAPON_TIERS[t].includes(id)) return t;
+    return 0;
+};
+window.getFishTier = function (id) {
+    for (let t = 0; t < FISH_TIERS.length; t++) if (FISH_TIERS[t].includes(id)) return t;
+    return 0;
+};
+
 window.FISH_MAPS = FISH_MAPS;
 window.FISH_SKINS = FISH_SKINS;
 window.WEAPON_SKINS = WEAPON_SKINS;
