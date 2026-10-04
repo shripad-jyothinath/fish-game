@@ -25,6 +25,15 @@ may be in flight (npm install, sim run) — verify before assuming.
 > **Limited editions:** item → max-copies map in `HEDERA_EDITION_LIMITS` (Golden Leviathan is
 > 1-of-1 by default), enforced by an atomic reservation in `store.reserveNftMint` before the
 > Hedera mint; each serial gets its own metadata URI and serial-varied SVG art.
+> **Custodial wallets:** every account auto-gets an operator-funded wallet
+> (`CustodyService` in `apps/api/src/hedera/custody.ts`, AES-256-GCM with `WALLET_ENCRYPTION_KEY`,
+> stored in `custodied_wallets`), created on registration and lazily for existing accounts.
+> Passwords gate key export (`POST /api/v1/hedera/wallet/export`), external links win as payout
+> target, kill switch `HEDERA_AUTO_WALLETS=false`. Wallets get 10 auto-association slots so
+> airdrops land as real balances; `npm run hedera:claim -- --account 0.0.x --token 0.0.y
+> [--serial N]` repairs pending airdrops (needs the wallet key via `WALLET_KEY` env).
+> Mirror memo matching accepts both `memo` and `memo_base64` (mirror API changed) — fixed and
+> unit-tested.
 > Still to do: WalletConnect frontend, marketplace, mainnet.
 >
 > **Update (3D assets + arsenal):** 25 weapons with explicit tiers (`WEAPON_TIER_OVERRIDES`),

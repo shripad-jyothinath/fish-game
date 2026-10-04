@@ -171,7 +171,7 @@ export class RewardService {
   }
 
   async claim(userId: string, wallet: WalletService): Promise<{ amount: number; payment: TokenPayment }> {
-    const link = wallet.getLink(userId);
+    const link = wallet.getPayoutWallet(userId);
     if (!link) {
       const error = new Error('Link a Hedera account before claiming $GOLD.');
       (error as Error & { code?: string }).code = 'wallet_not_linked';

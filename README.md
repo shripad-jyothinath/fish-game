@@ -92,6 +92,14 @@ the Hedera mint. Add more caps with a JSON env var:
 `HEDERA_EDITION_LIMITS={"golden_leviathan":1,"megalodon":5}`. Each copy gets its
 own metadata URL and art variation (colored + "EDITION #N") by serial.
 
+**Wallets:** every account automatically gets an operator-funded Hedera wallet
+(keys encrypted at rest with `WALLET_ENCRYPTION_KEY`, AES-256-GCM) with
+auto-association slots, so rewards land as real balances. Players can export the
+private key from the account panel (password-confirmed) and import it into
+HashPack/Blade; linking their own wallet takes over as the payout target. Turn
+auto-wallets off with `HEDERA_AUTO_WALLETS=false`; repair pending airdrops with
+`npm run hedera:claim -- --account 0.0.x --token 0.0.y`.
+
 ## Run the headless simulation (game-core)
 
 ```powershell

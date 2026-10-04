@@ -64,7 +64,15 @@ export function buildServer(config: ApiConfig): FastifyInstance {
   }));
 
   // --- Accounts & sessions --------------------------------------------------
-  registerAuthRoutes(app, store, { cookieSecure: config.nodeEnv === 'production' });
+  registerAuthRoutes(app, store, {
+    cookieSecure: config.nodeEnv === 'production',
+    onAccountCreated: (userId) => {
+      // Auto-provision the player's managed wallet in the background; failures retry on next use.
+      if (hedera.custody) {
+        void hedera.custody.ensureWallet(userId).catch((err) => app.log.warn({ err }, 'auto wallet creation failed'));
+      }
+    },
+  });
   const requireUser = makeAuthGuard(store);
   registerSaveRoutes(app, store, requireUser);
 

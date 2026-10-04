@@ -18,6 +18,7 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { AuthGuard } from '../auth.ts';
+import { verifyPassword } from '../auth.ts';
 import type { NftItemRow, Store } from '../db.ts';
 import { hashscanNftUrl, hashscanTxUrl } from './config.ts';
 import type { MatchStats } from './rewards.ts';
@@ -115,6 +116,7 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
       settings.nftCollectionId || store.getHederaResource(settings.network, 'nft_collection')?.resource_id || null,
     gold: { name: settings.goldName, symbol: settings.goldSymbol, decimals: settings.goldDecimals },
     rewards: { dailyCap: settings.rewardDailyCap, matchCap: settings.rewardMatchCap },
+    autoWallets: Boolean(services.custody),
     walletLink: {
       method: 'transfer',
       operatorAccountId: settings.operatorId || null,
@@ -195,16 +197,46 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
   // ---------------------------------------------------------------- wallet link
   app.get('/api/v1/hedera/link', { preHandler: requireUser }, async (req) => {
     const user = req.user;
-    const link = user ? services.wallet.getLink(user.id) : null;
+    const external = user ? services.wallet.getLink(user.id) : null;
+    let custodial = user && services.custody ? services.custody.getWallet(user.id) : null;
+    // Existing accounts get their managed wallet on first look (new signups get it at registration).
+    if (user && services.custody && !external && !custodial) {
+      custodial = await services.custody.ensureWallet(user.id);
+    }
     return {
-      linked: Boolean(link),
-      link: link
-        ? { accountId: link.accountId, method: link.method, network: link.network, linkedAt: link.linkedAt }
-        : null,
+      linked: Boolean(external || custodial),
+      link: external
+        ? { accountId: external.accountId, method: external.method, network: external.network, linkedAt: external.linkedAt }
+        : custodial
+          ? { accountId: custodial.accountId, method: 'custodial', network: custodial.network, linkedAt: custodial.createdAt, managed: true }
+          : null,
+      custodial: custodial ? { accountId: custodial.accountId, managed: true, exportable: true } : null,
+      autoWallets: Boolean(services.custody),
       network: settings.network,
       operatorAccountId: settings.operatorId || null,
       method: 'transfer',
       amountTinybar: 1,
+    };
+  });
+
+  app.post('/api/v1/hedera/wallet/export', { preHandler: requireUser }, async (req, reply) => {
+    const user = req.user;
+    if (!user) return reply.code(401).send(errorBody('unauthorized', 'Sign in required.'));
+    if (!services.custody) {
+      return reply.code(503).send(errorBody('hedera_disabled', 'Hedera is not configured on this server yet.'));
+    }
+    const body = (req.body ?? {}) as { password?: unknown };
+    const password = typeof body.password === 'string' ? body.password : '';
+    const row = store.findUserById(user.id);
+    if (!row || !password || !verifyPassword(password, row.password_hash)) {
+      return reply.code(403).send(errorBody('bad_password', 'Wrong password.'));
+    }
+    const exported = services.custody.exportKey(user.id);
+    if (!exported) return reply.code(404).send(errorBody('no_wallet', 'No managed wallet on this account.'));
+    reply.header('cache-control', 'no-store');
+    return {
+      ...exported,
+      warning: 'Testnet wallet — import into HashPack/Blade. Never share the private key.',
     };
   });
 
@@ -341,7 +373,7 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
     if (!ownsItem(store, user.id, itemType, itemId)) {
       return reply.code(403).send(errorBody('item_not_owned', 'Unlock this item in the game before minting it.'));
     }
-    const link = services.wallet.getLink(user.id);
+    const link = services.wallet.getPayoutWallet(user.id);
     if (!link) {
       return reply.code(409).send(errorBody('wallet_not_linked', 'Link a Hedera wallet before minting NFTs.'));
     }

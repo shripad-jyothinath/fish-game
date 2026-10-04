@@ -18,6 +18,7 @@
     "api:typecheck": "tsc --noEmit -p apps/api",
     "hedera:setup": "npm --workspace @fishio/api run hedera:setup",
     "hedera:wallet": "npm --workspace @fishio/api run hedera:wallet",
+    "hedera:claim": "npm --workspace @fishio/api run hedera:claim",
     "typecheck": "tsc --noEmit -p apps/api"
   },
   "devDependencies": {

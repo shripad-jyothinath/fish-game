@@ -22,6 +22,8 @@ export interface HederaSettings {
   matchCooldownMs: number;
   /** Per-item mint caps: itemId → max copies in existence. */
   editionLimits: Record<string, number>;
+  /** Create a managed wallet for every account (true unless HEDERA_AUTO_WALLETS=false). */
+  autoWallets: boolean;
   mirrorBaseUrl: string;
   hashscanBaseUrl: string;
   /** Absolute base URL used in NFT metadata URIs (must be public for explorers to fetch it). */
@@ -86,6 +88,7 @@ export function loadHederaSettings(env: NodeJS.ProcessEnv = process.env): Hedera
     rewardMatchCap: num(env.HEDERA_REWARD_MATCH_CAP, 100),
     matchCooldownMs: num(env.HEDERA_MATCH_COOLDOWN_MS, 10_000),
     editionLimits: parseEditionLimits(env.HEDERA_EDITION_LIMITS),
+    autoWallets: env.HEDERA_AUTO_WALLETS !== 'false',
     mirrorBaseUrl: (env.HEDERA_MIRROR_URL ?? '').trim() || MIRROR_BASE[network],
     hashscanBaseUrl: (env.HEDERA_HASHSCAN_URL ?? '').trim() || HASHSCAN_BASE[network],
     publicBaseUrl: (env.PUBLIC_BASE_URL ?? '').trim() || 'http://127.0.0.1:8080',

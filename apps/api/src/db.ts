@@ -51,6 +51,16 @@ export interface WalletLinkRow {
   linked_at: number;
 }
 
+export interface CustodialWalletRow {
+  user_id: string;
+  hedera_account_id: string;
+  key_cipher: string;
+  key_iv: string;
+  key_tag: string;
+  network: string;
+  created_at: number;
+}
+
 export interface NonceRow {
   nonce: string;
   user_id: string;
@@ -174,6 +184,11 @@ export function openDatabase(dbPath: string) {
          method = excluded.method, network = excluded.network, linked_at = excluded.linked_at`,
     ),
     deleteWalletLink: db.prepare('DELETE FROM wallet_links WHERE user_id = ?'),
+    custodialByUser: db.prepare('SELECT * FROM custodied_wallets WHERE user_id = ?'),
+    insertCustodial: db.prepare(
+      `INSERT INTO custodied_wallets (user_id, hedera_account_id, key_cipher, key_iv, key_tag, network, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    ),
     insertNonce: db.prepare('INSERT INTO auth_nonces (nonce, user_id, message, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'),
     nonceByValue: db.prepare('SELECT * FROM auth_nonces WHERE nonce = ?'),
     markNonceUsedStmt: db.prepare('UPDATE auth_nonces SET used_at = ? WHERE nonce = ?'),
@@ -322,6 +337,20 @@ export function openDatabase(dbPath: string) {
     },
     deleteWalletLink(userId: string): void {
       stmts.deleteWalletLink.run(userId);
+    },
+    getCustodialWallet(userId: string): CustodialWalletRow | undefined {
+      return stmts.custodialByUser.get(userId) as CustodialWalletRow | undefined;
+    },
+    insertCustodialWallet(row: CustodialWalletRow): void {
+      stmts.insertCustodial.run(
+        row.user_id,
+        row.hedera_account_id,
+        row.key_cipher,
+        row.key_iv,
+        row.key_tag,
+        row.network,
+        row.created_at,
+      );
     },
 
     createNonce(nonce: string, userId: string, message: string, expiresAt: number): void {

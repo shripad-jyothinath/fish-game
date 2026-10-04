@@ -10,6 +10,7 @@ import { PublicKey } from '@hiero-ledger/sdk';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { Store } from '../db.ts';
 import type { HederaSettings } from './config.ts';
+import type { CustodyService } from './custody.ts';
 import { decodeMemo, type MirrorClient } from './mirror.ts';
 
 const NONCE_TTL_MS = 10 * 60 * 1000;
@@ -57,7 +58,7 @@ export interface WalletLink {
   userId: string;
   accountId: string;
   publicKey: string | null;
-  method: 'transfer' | 'signature';
+  method: 'transfer' | 'signature' | 'custodial';
   network: string;
   linkedAt: number;
 }
@@ -79,6 +80,7 @@ export class WalletService {
     private readonly store: Store,
     private readonly mirror: MirrorClient,
     private readonly settings: HederaSettings,
+    private readonly custody: CustodyService | null = null,
   ) {}
 
   getLink(userId: string): WalletLink | null {
@@ -91,6 +93,22 @@ export class WalletService {
       method: row.method as WalletLink['method'],
       network: row.network,
       linkedAt: row.linked_at,
+    };
+  }
+
+  /** Where payouts go: the player's own linked wallet first, else the managed one. */
+  getPayoutWallet(userId: string): WalletLink | null {
+    const external = this.getLink(userId);
+    if (external) return external;
+    const custodial = this.custody?.getWallet(userId);
+    if (!custodial) return null;
+    return {
+      userId,
+      accountId: custodial.accountId,
+      publicKey: null,
+      method: 'custodial',
+      network: custodial.network,
+      linkedAt: custodial.createdAt,
     };
   }
 
@@ -145,7 +163,7 @@ export class WalletService {
     const memoNeedle = `fishio:${nonce}`;
     const transactions = await this.mirror.recentTransactions(accountId, 25);
     const match = transactions.find((tx) => {
-      const memo = decodeMemo(tx.memo);
+      const memo = decodeMemo(tx);
       if (!memo.includes(memoNeedle)) return false;
       return (tx.transfers ?? []).some((t) => t.account === this.settings.operatorId && t.amount > 0);
     });

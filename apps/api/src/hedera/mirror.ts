@@ -10,7 +10,9 @@ export interface MirrorTokenBalance {
 
 export interface MirrorTransaction {
   transaction_id: string;
-  memo: string; // base64 in mirror responses
+  /** Newer mirror nodes expose the memo as `memo_base64`; older ones as `memo`. */
+  memo?: string;
+  memo_base64?: string;
   result: string;
   transfers?: Array<{ account: string; amount: number }>;
 }
@@ -71,9 +73,11 @@ export class MirrorClient {
   }
 }
 
-export function decodeMemo(memo: string): string {
+export function decodeMemo(transaction: { memo?: string; memo_base64?: string }): string {
+  const raw = transaction.memo_base64 || transaction.memo;
+  if (!raw) return '';
   try {
-    return Buffer.from(memo, 'base64').toString('utf8');
+    return Buffer.from(raw, 'base64').toString('utf8');
   } catch {
     return '';
   }

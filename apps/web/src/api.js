@@ -394,13 +394,26 @@
         html += `<div class="hedera-row"><span>$GOLD tokens</span><span>${goldLine}</span></div>`;
 
         if (link && link.linked) {
-            html += `<div class="hedera-row"><span>Wallet</span><span class="hedera-account">${escapeHtml(link.link.accountId)}</span></div>`;
+            const managed = link.link && link.link.method === 'custodial';
+            html += `<div class="hedera-row"><span>Wallet</span><span class="hedera-account">${escapeHtml(link.link.accountId)}${managed ? ' · managed' : ''}</span></div>`;
             html += '<div class="hedera-actions">';
             if (gold && gold.pending > 0) {
                 html += '<button class="hedera-btn primary" onclick="fishClaimGold()">Claim pending $GOLD</button>';
             }
-            html += '<button class="hedera-btn" onclick="fishUnlinkWallet()">Unlink</button>';
+            if (managed && link.custodial && link.custodial.exportable) {
+                html += '<button class="hedera-btn" onclick="fishExportWallet()">Export key</button>';
+            }
+            if (!managed) {
+                html += '<button class="hedera-btn" onclick="fishUnlinkWallet()">Unlink</button>';
+            }
             html += '</div>';
+            if (managed) {
+                html += `<div class="hedera-actions">
+                    <input class="hedera-input" id="hederaAccountInput" placeholder="0.0.yourOwnWallet">
+                    <button class="hedera-btn" onclick="fishStartLink()">Link my own instead</button>
+                </div>
+                <div class="hedera-muted">Wallet created automatically for you. Linking your own (HashPack/Blade) takes over as the payout target.</div>`;
+            }
         } else if (linkChallenge) {
             html += `<div class="hedera-steps">
                 <div>1. In your Hedera wallet, send <b>0.00000001 HBAR</b> to <b>${escapeHtml(linkChallenge.instructions.accountId)}</b></div>
@@ -507,6 +520,22 @@
             await request('/api/v1/hedera/link', { method: 'DELETE' });
             showToast('Wallet unlinked');
             renderHederaPanel();
+        } catch (err) {
+            showToast(err.message);
+        }
+    }
+
+    async function fishExportWallet() {
+        const password = window.prompt('Confirm your account password to export the wallet private key:');
+        if (!password) return;
+        try {
+            const result = await request('/api/v1/hedera/wallet/export', { method: 'POST', body: { password } });
+            try {
+                await navigator.clipboard.writeText(result.privateKeyDer);
+                showToast(`Key for ${result.accountId} copied — import it into HashPack/Blade`);
+            } catch {
+                window.prompt(`Private key for ${result.accountId} (testnet — keep it safe):`, result.privateKeyDer);
+            }
         } catch (err) {
             showToast(err.message);
         }
@@ -629,6 +658,7 @@
     window.fishCancelLink = fishCancelLink;
     window.fishVerifyWallet = fishVerifyWallet;
     window.fishUnlinkWallet = fishUnlinkWallet;
+    window.fishExportWallet = fishExportWallet;
     window.fishClaimGold = fishClaimGold;
     window.fishMintItem = fishMintItem;
     window.fishAuth = {

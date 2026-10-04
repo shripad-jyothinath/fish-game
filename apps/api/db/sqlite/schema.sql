@@ -51,6 +51,17 @@ CREATE TABLE IF NOT EXISTS wallet_links (
     linked_at         INTEGER NOT NULL
 );
 
+-- Auto-created wallets for every account (operator-funded, keys encrypted at rest).
+CREATE TABLE IF NOT EXISTS custodied_wallets (
+    user_id           TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    hedera_account_id TEXT NOT NULL UNIQUE,
+    key_cipher        TEXT NOT NULL,
+    key_iv            TEXT NOT NULL,
+    key_tag           TEXT NOT NULL,
+    network           TEXT NOT NULL,
+    created_at        INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS auth_nonces (
     nonce      TEXT PRIMARY KEY,
     user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

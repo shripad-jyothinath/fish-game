@@ -6,6 +6,7 @@
 import type { Store } from '../db.ts';
 import { createHederaClient, type HederaClient } from './client.ts';
 import type { HederaSettings } from './config.ts';
+import { CustodyService } from './custody.ts';
 import { HcsService } from './hcs.ts';
 import { MirrorClient } from './mirror.ts';
 import { NftService } from './nft.ts';
@@ -23,6 +24,7 @@ export interface HederaServices {
   hcs: HcsService | null;
   token: TokenService | null;
   nft: NftService | null;
+  custody: CustodyService | null;
   wallet: WalletService;
   rewards: RewardService;
 }
@@ -43,8 +45,9 @@ export function createHederaServices(store: Store, settings: HederaSettings): He
   const hcs = hedera ? new HcsService(hedera, store, settings) : null;
   const token = hedera ? new TokenService(hedera, store, settings) : null;
   const nft = hedera ? new NftService(hedera, store, settings) : null;
-  const wallet = new WalletService(store, mirror, settings);
+  const custody = hedera && settings.autoWallets ? new CustodyService(hedera, store, settings) : null;
+  const wallet = new WalletService(store, mirror, settings, custody);
   const rewards = new RewardService(store, settings, hcs ?? undefined, token ?? undefined);
 
-  return { settings, online: Boolean(hedera), credentialsError, hedera, mirror, hcs, token, nft, wallet, rewards };
+  return { settings, online: Boolean(hedera), credentialsError, hedera, mirror, hcs, token, nft, custody, wallet, rewards };
 }

@@ -145,7 +145,7 @@ interface AuthBody {
 export function registerAuthRoutes(
   app: FastifyInstance,
   store: Store,
-  options: { cookieSecure: boolean },
+  options: { cookieSecure: boolean; onAccountCreated?: (userId: string) => void },
 ): void {
   const authLimit = rateLimiter(20, 10 * 60 * 1000);
   const requireUser = makeAuthGuard(store);
@@ -188,6 +188,13 @@ export function registerAuthRoutes(
     };
     store.createUser(user);
     setSessionCookie(reply, createSession(store, user.id, now), options.cookieSecure);
+    if (options.onAccountCreated) {
+      try {
+        options.onAccountCreated(user.id);
+      } catch (err) {
+        req.log.warn({ err }, 'post-register hook failed');
+      }
+    }
     return reply.code(201).send({ user: toPublicUser(user) });
   });
 

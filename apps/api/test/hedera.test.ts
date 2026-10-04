@@ -10,10 +10,12 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { PrivateKey } from '@hiero-ledger/sdk';
 import { loadHederaSettings, type HederaSettings } from '../src/hedera/config.ts';
+import { decryptSecret, encryptSecret, type CustodyService } from '../src/hedera/custody.ts';
 import { openDatabase, type NftItemRow } from '../src/db.ts';
 import { loadDotEnv } from '../src/env.ts';
+import { decodeMemo, MirrorClient } from '../src/hedera/mirror.ts';
 import { calculateGoldReward } from '../src/hedera/rewards.ts';
-import { isValidHederaAccountId, stripChecksum, verifyMessageSignature } from '../src/hedera/wallet.ts';
+import { isValidHederaAccountId, stripChecksum, verifyMessageSignature, WalletService } from '../src/hedera/wallet.ts';
 
 const settings: HederaSettings = {
   enabled: true,
@@ -30,6 +32,8 @@ const settings: HederaSettings = {
   rewardDailyCap: 500,
   rewardMatchCap: 100,
   matchCooldownMs: 10000,
+  editionLimits: { golden_leviathan: 1 },
+  autoWallets: true,
   mirrorBaseUrl: 'https://example.invalid',
   hashscanBaseUrl: 'https://example.invalid',
   publicBaseUrl: 'http://127.0.0.1:8080',
@@ -107,6 +111,67 @@ test('settings default to a disabled testnet config without credentials', () => 
   const custom = loadHederaSettings({ HEDERA_EDITION_LIMITS: '{"coral_dagger":5,"golden_leviathan":1}' });
   assert.equal(custom.editionLimits.coral_dagger, 5);
   assert.equal(custom.editionLimits.golden_leviathan, 1);
+
+  assert.equal(loadHederaSettings({}).autoWallets, true, 'auto wallets on by default');
+  assert.equal(loadHederaSettings({ HEDERA_AUTO_WALLETS: 'false' }).autoWallets, false, 'kill switch works');
+});
+
+test('mirror memo decoding supports both memo and memo_base64', () => {
+  const encoded = Buffer.from('fishio:abc123').toString('base64');
+  assert.equal(decodeMemo({ memo_base64: encoded }), 'fishio:abc123');
+  assert.equal(decodeMemo({ memo: encoded }), 'fishio:abc123');
+  assert.equal(decodeMemo({}), '');
+});
+
+test('custodial wallet keys encrypt, decrypt, and reject tampering', () => {
+  const secret = '3030020100300706052b8104000a04220420aabbccddeeff00112233445566778899';
+  const encrypted = encryptSecret(secret);
+  assert.notEqual(encrypted.cipher, secret);
+  assert.equal(decryptSecret(encrypted), secret);
+  assert.throws(() => decryptSecret({ ...encrypted, tag: Buffer.from('0'.repeat(16)).toString('base64') }));
+});
+
+test('custodial wallets pay out, but a linked external wallet takes priority', () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  store.insertCustodialWallet({
+    user_id: 'u1',
+    hedera_account_id: '0.0.77',
+    key_cipher: 'c',
+    key_iv: 'i',
+    key_tag: 't',
+    network: 'testnet',
+    created_at: 5,
+  });
+  const custodyStub = {
+    getWallet: (userId: string) => {
+      const row = store.getCustodialWallet(userId);
+      return row
+        ? { userId, accountId: row.hedera_account_id, network: row.network, createdAt: row.created_at }
+        : null;
+    },
+  } as unknown as CustodyService;
+  const wallet = new WalletService(store, new MirrorClient('https://example.invalid'), settings, custodyStub);
+  const custodialPayout = wallet.getPayoutWallet('u1');
+  assert.ok(custodialPayout, 'managed wallet resolves');
+  assert.equal(custodialPayout.accountId, '0.0.77');
+  assert.equal(custodialPayout.method, 'custodial');
+
+  store.upsertWalletLink('u1', '0.0.88', null, 'transfer', 'testnet', 6);
+  const externalPayout = wallet.getPayoutWallet('u1');
+  assert.ok(externalPayout, 'external wallet resolves');
+  assert.equal(externalPayout.accountId, '0.0.88');
+  assert.equal(externalPayout.method, 'transfer');
+
+  store.close();
 });
 
 test('limited editions reserve atomically and free slots on failure', () => {
