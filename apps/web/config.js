@@ -12,8 +12,9 @@
 (function () {
   'use strict';
 
-  // window.FISHIO_API_BASE = 'https://api.example.com';
-  // window.FISHIO_ROOM_URL = 'wss://room.example.com';
+  // Production backend (VPS behind Caddy, see deploy/README.md).
+  window.FISHIO_API_BASE = 'https://api.69-62-81-172.sslip.io';
+  window.FISHIO_ROOM_URL = 'wss://room.69-62-81-172.sslip.io';
 
   try {
     var params = new URLSearchParams(window.location.search);

@@ -49,12 +49,15 @@ export function buildServer(config: ApiConfig): FastifyInstance {
 
   // Cross-site deployments (e.g. the game on Vercel, API here) need an explicit
   // origin allowlist with credentials; local same-origin play needs nothing.
+  // Entries support simple wildcards, e.g. https://fish-game-*.vercel.app (previews).
   if (config.webOrigins.length > 0) {
-    const allowed = new Set(config.webOrigins);
+    const patterns = config.webOrigins.map(
+      (origin) => new RegExp(`^${origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*')}$`),
+    );
     app.register(cors, {
       origin(origin, callback) {
         // Allow requests without an Origin header (curl, health checks) and allowlisted sites.
-        callback(null, !origin || allowed.has(origin));
+        callback(null, !origin || patterns.some((pattern) => pattern.test(origin)));
       },
       credentials: true,
     });

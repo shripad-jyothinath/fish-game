@@ -128,7 +128,38 @@ ROOM_NAME=reef-1
 ROOM_MAX_PLAYERS=32
 ```
 
+`WEB_ORIGIN` supports `*` wildcards, so preview deployments work too:
+
+```env
+WEB_ORIGIN=https://fish-game-rouge.vercel.app,https://fish-game-*.vercel.app
+```
+
 Then: `systemctl restart fishio-api fishio-room` (only these two units).
+
+## 2b. Hedera keys (optional — enables $GOLD, NFTs, HCS receipts)
+
+You need a **Hedera testnet operator account**:
+
+1. Go to <https://portal.hedera.com> → create/log in → **Create Testnet Account** (free, funded).
+2. Copy the **Account ID** (`0.0.x`) and the **DER private key** (long hex starting `302e…`/`3030…`,
+   also downloadable as a `.key`/`.pem` file). Keep them out of git.
+3. On the VPS (console or SSH):
+
+   ```bash
+   bash /opt/fishio/app/deploy/setup-hedera.sh
+   # prompts for Account ID + key (input hidden); non-interactive:
+   # HEDERA_OPERATOR_ID=0.0.x HEDERA_OPERATOR_KEY=302e... bash deploy/setup-hedera.sh
+   ```
+
+   The script backs up `.env`, stores the credentials, generates `WALLET_ENCRYPTION_KEY`,
+   then runs `npm run hedera:setup -- --write-env` which creates the HCS topic, the `$GOLD`
+   token and the NFT collection, writes their IDs into `.env`, and restarts `fishio-api`.
+4. Verify: `curl -s https://api.<domain>/api/v1/status` → `"hedera":"online:testnet"`.
+
+The game automatically starts attesting finished matches (HashScan link on the game-over
+screen) and awards pending `$GOLD`. Without keys the API runs in a clean offline mode.
+For **mainnet** later: repeat with a mainnet operator funded with real HBAR and set
+`HEDERA_NETWORK=mainnet` — nothing else changes.
 
 ## 3. TLS + routing with the existing Caddy
 
@@ -151,7 +182,13 @@ of the existing file instead — still a reload, not a restart.
 1. Import the GitHub repo in Vercel.
 2. **Root Directory: `apps/web`** · Framework Preset: Other · Build Command: *(empty)* ·
    Output Directory: `.` (the repo ships `apps/web/vercel.json`).
+   The root `vercel.json` is a fallback that forces static output from `apps/web` even if the
+   Root Directory is left at the repo root (skips install/build entirely).
 3. Deploy. You get `https://<project>.vercel.app`.
+   **If you see `500 FUNCTION_INVOCATION_FAILED`** the project is trying to run the monorepo
+   as a serverless service — fix the Build & Development settings above and hit
+   **Deployments → ⋯ → Redeploy** (uncheck "use existing build cache"). Re-importing the
+   project with the correct Root Directory also works.
 4. Point the game at the VPS backend — edit `apps/web/config.js` (or inject at build):
 
    ```js
