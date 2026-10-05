@@ -90,7 +90,9 @@ async function main(): Promise<void> {
   console.log(`URL=${hashscanTxUrl(settings, response.transactionId.toString())}`);
 }
 
-main().catch((err) => {
-  console.error('Claim failed:', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Claim failed:', err);
+    process.exit(1);
+  });

@@ -141,7 +141,10 @@ async function main(): Promise<void> {
   console.log('\nDone.');
 }
 
-main().catch((err) => {
-  console.error('\nSetup failed:', err);
-  process.exit(1);
-});
+main()
+  // The Hedera SDK keeps a gRPC channel open; exit explicitly so CLI runs terminate.
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('\nSetup failed:', err);
+    process.exit(1);
+  });

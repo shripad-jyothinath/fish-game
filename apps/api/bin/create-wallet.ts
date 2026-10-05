@@ -86,7 +86,9 @@ async function main(): Promise<void> {
   if (memo) await sendProof(hedera, settings, accountId, key);
 }
 
-main().catch((err) => {
-  console.error('Wallet operation failed:', err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error('Wallet operation failed:', err);
+    process.exit(1);
+  });
