@@ -20,10 +20,51 @@ if [ ! -d "$APP_DIR/apps/api" ]; then
   exit 1
 fi
 
-command -v node >/dev/null 2>&1 || {
-  echo "error: Node.js >= 20 is required on PATH (install it, then re-run)" >&2
-  exit 1
+# --- Node runtime: use system node >= 20, otherwise install a private Node 22 ---
+ensure_node() {
+  if command -v node >/dev/null 2>&1; then
+    local major
+    major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+    if [ "$major" -ge 20 ]; then
+      return 0
+    fi
+    echo "[fishio] system node is too old ($(node -v)) — installing private Node 22 under $ROOT_DIR/node"
+  else
+    echo "[fishio] node not found — installing private Node 22 under $ROOT_DIR/node"
+  fi
+
+  local arch node_arch listing url tmp
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64 | amd64) node_arch="x64" ;;
+    aarch64 | arm64) node_arch="arm64" ;;
+    *)
+      echo "error: unsupported architecture $arch" >&2
+      exit 1
+      ;;
+  esac
+
+  command -v curl >/dev/null 2>&1 || {
+    echo "error: curl is required to download Node" >&2
+    exit 1
+  }
+  listing="$(curl -fsSL https://nodejs.org/dist/latest-v22.x/)"
+  url="$(printf '%s' "$listing" | grep -oE "node-v22\.[0-9]+\.[0-9]+-linux-${node_arch}\.tar\.xz" | head -1)"
+  if [ -z "$url" ]; then
+    echo "error: could not locate a Node 22 build for linux-${node_arch}" >&2
+    exit 1
+  fi
+  tmp="$(mktemp -d)"
+  curl -fsSL "https://nodejs.org/dist/latest-v22.x/${url}" -o "$tmp/node.tar.xz"
+  tar -xJf "$tmp/node.tar.xz" -C "$tmp"
+  mkdir -p "$ROOT_DIR/node"
+  cp -a "$tmp/${url%.tar.xz}/." "$ROOT_DIR/node/"
+  rm -rf "$tmp"
+  echo "[fishio] installed $("$ROOT_DIR/node/bin/node" -v) at $ROOT_DIR/node"
 }
+ensure_node
+export PATH="$ROOT_DIR/node/bin:$PATH"
+
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 if [ "$NODE_MAJOR" -lt 20 ]; then
   echo "error: Node >= 20 required (found $(node -v))" >&2
@@ -62,6 +103,17 @@ else
   npm install --no-audit --no-fund
 fi
 chown -R "$APP_USER:$APP_USER" "$APP_DIR/node_modules" 2>/dev/null || true
+
+# Generate the internal HMAC secret used by room servers (M4) if still a placeholder.
+if grep -q '^INTERNAL_HMAC_SECRET=replace-with-a-long-random-value' "$APP_DIR/apps/api/.env" 2>/dev/null; then
+  if command -v openssl >/dev/null 2>&1; then
+    SECRET="$(openssl rand -hex 32)"
+  else
+    SECRET="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
+  sed -i "s|^INTERNAL_HMAC_SECRET=.*|INTERNAL_HMAC_SECRET=${SECRET}|" "$APP_DIR/apps/api/.env"
+  echo "[fishio] generated INTERNAL_HMAC_SECRET"
+fi
 
 # systemd units.
 install -m 644 "$APP_DIR/deploy/systemd/fishio-api.service" /etc/systemd/system/fishio-api.service

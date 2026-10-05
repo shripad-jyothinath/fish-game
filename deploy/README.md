@@ -57,6 +57,54 @@ Re-running the script is the update path (same steps, `.env` preserved, services
 > Alternative without SSH from your machine: push the repo to GitHub, then on the server
 > `git clone` into `/opt/fishio/app` and run `bash deploy/server-install.sh`.
 
+### 1b. No SSH? Deploy from the provider's web console
+
+SSH port 22 and 80/443 are different beasts: if your local network blocks SSH, the hoster's
+web console still works. Paste this into the console (root shell):
+
+```bash
+set -e
+mkdir -p /opt
+if [ ! -d /opt/fishio/app/.git ]; then
+  git clone https://github.com/shripad-jyothinath/fish-game.git /opt/fishio/app
+else
+  git -C /opt/fishio/app pull --ff-only
+fi
+bash /opt/fishio/app/deploy/server-install.sh
+```
+
+The installer is self-contained: it creates the `fishio` user, installs a private Node 22
+under `/opt/fishio/node` when the system Node is missing/too old, installs dependencies,
+starts both systemd units on 127.0.0.1:18080/18787 and health-checks them.
+
+Then expose them through the existing Caddy. **No DNS needed for the first deployment** —
+sslip.io names resolve to the IP automatically:
+
+```bash
+bash /opt/fishio/app/deploy/setup-caddy.sh \
+  api.69-62-81-172.sslip.io \
+  room.69-62-81-172.sslip.io
+```
+
+`setup-caddy.sh` writes `/etc/caddy/fishio.caddy`, adds one `import` line with a timestamped
+backup, validates with `caddy validate`, rolls back on error and then `systemctl reload caddy`
+(never a restart). Existing sites are untouched.
+
+Verify from any machine:
+
+```bash
+curl -s https://api.69-62-81-172.sslip.io/healthz
+curl -s https://room.69-62-81-172.sslip.io/healthz
+```
+
+After the Vercel URL is known, set it as the allowed browser origin (console one-liner):
+
+```bash
+sed -i 's|^WEB_ORIGIN=.*|WEB_ORIGIN=https://your-game.vercel.app|' /opt/fishio/app/apps/api/.env
+systemctl restart fishio-api
+```
+
+
 ## 2. Configure the env files (on the server)
 
 `/opt/fishio/app/apps/api/.env`:

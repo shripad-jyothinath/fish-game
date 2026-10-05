@@ -10,6 +10,7 @@ User=fishio
 Group=fishio
 WorkingDirectory=/opt/fishio/app/apps/api
 Environment=NODE_ENV=production
+Environment=PATH=/opt/fishio/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=/opt/fishio/app/apps/api/.env
 ExecStart=/opt/fishio/app/node_modules/.bin/tsx src/index.ts
 Restart=always
