@@ -75,7 +75,7 @@ chown fishio:fishio "$ENV_FILE" 2>/dev/null || true
 # Provision topic / $GOLD / NFT collection and write their IDs back into .env.
 cd "$APP_DIR"
 echo "[fishio] provisioning HCS topic, \$GOLD token and NFT collection..."
-npm run hedera:setup -- --write-env
+npm --workspace @fishio/api run hedera:setup -- --write-env
 
 systemctl restart fishio-api
 sleep 2

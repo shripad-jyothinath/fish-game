@@ -20,9 +20,9 @@
     "game-core:sim": "node packages/game-core/bin/sim.js",
     "api:test": "npm --workspace @fishio/api run test",
     "api:typecheck": "tsc --noEmit -p apps/api",
-    "hedera:setup": "npm --workspace @fishio/api run hedera:setup",
-    "hedera:wallet": "npm --workspace @fishio/api run hedera:wallet",
-    "hedera:claim": "npm --workspace @fishio/api run hedera:claim",
+    "hedera:setup": "npm --workspace @fishio/api run hedera:setup --",
+    "hedera:wallet": "npm --workspace @fishio/api run hedera:wallet --",
+    "hedera:claim": "npm --workspace @fishio/api run hedera:claim --",
     "typecheck": "tsc --noEmit -p apps/api && tsc --noEmit -p apps/room-server"
   },
   "devDependencies": {

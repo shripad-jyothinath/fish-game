@@ -84,7 +84,9 @@ async function main(): Promise<void> {
   const updates: Record<string, string> = { HEDERA_NETWORK: settings.network };
 
   if (settings.topicId || store.getHederaResource(settings.network, 'hcs_topic')) {
-    console.log(`• HCS topic:        ${settings.topicId || store.getHederaResource(settings.network, 'hcs_topic')?.resource_id} (existing)`);
+    const topicId = settings.topicId || store.getHederaResource(settings.network, 'hcs_topic')!.resource_id;
+    updates.HEDERA_TOPIC_ID = topicId;
+    console.log(`• HCS topic:        ${topicId} (existing)`);
   } else {
     const topicId = await services.hcs.ensureTopic();
     updates.HEDERA_TOPIC_ID = topicId;
@@ -92,7 +94,9 @@ async function main(): Promise<void> {
   }
 
   if (settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')) {
-    console.log(`• $GOLD token:      ${settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')?.resource_id} (existing)`);
+    const tokenId = settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')!.resource_id;
+    updates.HEDERA_GOLD_TOKEN_ID = tokenId;
+    console.log(`• $GOLD token:      ${tokenId} (existing)`);
   } else {
     const tokenId = await services.token.ensureGoldToken();
     updates.HEDERA_GOLD_TOKEN_ID = tokenId;
@@ -100,7 +104,10 @@ async function main(): Promise<void> {
   }
 
   if (settings.nftCollectionId || store.getHederaResource(settings.network, 'nft_collection')) {
-    console.log(`• NFT collection:   ${settings.nftCollectionId || store.getHederaResource(settings.network, 'nft_collection')?.resource_id} (existing)`);
+    const collectionId =
+      settings.nftCollectionId || store.getHederaResource(settings.network, 'nft_collection')!.resource_id;
+    updates.HEDERA_NFT_COLLECTION_ID = collectionId;
+    console.log(`• NFT collection:   ${collectionId} (existing)`);
   } else {
     const collectionId = await services.nft.ensureCollection();
     updates.HEDERA_NFT_COLLECTION_ID = collectionId;
