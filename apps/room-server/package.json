@@ -1,0 +1,21 @@
+{
+  "name": "@fishio/room-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fish.IO M1 room server: authoritative shared arena over WebSocket.",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "test": "node --import tsx --test test/room.test.ts test/wire.test.ts",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@fishio/game-core": "*",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2"
+  }
+}

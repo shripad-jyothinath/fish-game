@@ -42,6 +42,11 @@ const BOOTSTRAP = `
 if (typeof SoundEngine !== 'undefined') SoundEngine.prototype.init = function () {};
 globalThis.__fishHarness = {
   createGame() { return new GameEngine(); },
+  // Server-side helper: create a Fish that is NOT an AI bot (human players).
+  createFish(x, y, name, skinId, weaponId, hatId) {
+    return new Fish(x, y, name, skinId, weaponId, false, hatId || 'none');
+  },
+  random() { return Math.random(); },
   catalog() {
     return {
       maps: FISH_MAPS,
@@ -148,6 +153,16 @@ export function loadGame(options = {}) {
       game.render = () => {};
       bridge.__game = game;
       return game;
+    },
+
+    /** Create a human (non-AI) fish inside the game context. */
+    createFish({ x, y, name, skinId, weaponId, hatId = 'none' }) {
+      return bridge.createFish(x, y, name, skinId, weaponId, hatId);
+    },
+
+    /** Seeded RNG from the game context, so server spawns stay reproducible. */
+    random() {
+      return bridge.random();
     },
 
     catalog() {

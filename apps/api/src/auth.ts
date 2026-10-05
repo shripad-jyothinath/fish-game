@@ -82,11 +82,11 @@ function createSession(store: Store, userId: string, now: number): string {
   return token;
 }
 
-function setSessionCookie(reply: FastifyReply, token: string, secure: boolean): void {
+function setSessionCookie(reply: FastifyReply, token: string, secure: boolean, crossSite = false): void {
   reply.setCookie(SESSION_COOKIE, token, {
     path: '/',
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite: crossSite ? 'none' : 'lax',
     secure,
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
@@ -145,7 +145,7 @@ interface AuthBody {
 export function registerAuthRoutes(
   app: FastifyInstance,
   store: Store,
-  options: { cookieSecure: boolean; onAccountCreated?: (userId: string) => void },
+  options: { cookieSecure: boolean; cookieCrossSite?: boolean; onAccountCreated?: (userId: string) => void },
 ): void {
   const authLimit = rateLimiter(20, 10 * 60 * 1000);
   const requireUser = makeAuthGuard(store);
@@ -187,7 +187,7 @@ export function registerAuthRoutes(
       last_login_at: now,
     };
     store.createUser(user);
-    setSessionCookie(reply, createSession(store, user.id, now), options.cookieSecure);
+    setSessionCookie(reply, createSession(store, user.id, now), options.cookieSecure, options.cookieCrossSite);
     if (options.onAccountCreated) {
       try {
         options.onAccountCreated(user.id);
@@ -210,14 +210,18 @@ export function registerAuthRoutes(
 
     const now = Date.now();
     store.markLogin(user.id, now);
-    setSessionCookie(reply, createSession(store, user.id, now), options.cookieSecure);
+    setSessionCookie(reply, createSession(store, user.id, now), options.cookieSecure, options.cookieCrossSite);
     return reply.send({ user: toPublicUser({ ...user, last_login_at: now }) });
   });
 
   app.post('/api/v1/auth/logout', async (req, reply) => {
     const token = req.cookies?.[SESSION_COOKIE];
     if (token) store.deleteSession(sha256(token));
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    reply.clearCookie(SESSION_COOKIE, {
+      path: '/',
+      secure: options.cookieSecure,
+      sameSite: options.cookieCrossSite ? 'none' : 'lax',
+    });
     return reply.code(204).send();
   });
 

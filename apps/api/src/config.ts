@@ -17,6 +17,8 @@ export interface ApiConfig {
   dbPath: string;
   /** HMAC secret room servers use to sign match results (placeholder until M4). */
   internalHmacSecret: string;
+  /** Browser origins allowed to call the API cross-site (e.g. the Vercel URL). Empty = same-origin only. */
+  webOrigins: string[];
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
@@ -29,5 +31,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     redisUrl: env.REDIS_URL ?? '',
     dbPath: env.FISHIO_DB_PATH || DEFAULT_DB_PATH,
     internalHmacSecret: env.INTERNAL_HMAC_SECRET ?? 'dev-secret-change-me',
+    webOrigins: (env.WEB_ORIGIN ?? '')
+      .split(',')
+      .map((origin) => origin.trim().replace(/\/$/, ''))
+      .filter(Boolean),
   };
 }

@@ -1,0 +1,26 @@
+# Fish.IO — Caddy reverse-proxy snippet
+#
+# The VPS already runs Caddy (ports 80/443). Add ONE file next to the existing
+# Caddy config (do not edit existing site blocks) and reload:
+#
+#   sudo cp deploy/Caddyfile.fishio /etc/caddy/conf.d/fishio.caddy   # or wherever conf.d lives
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Replace example.com with your domain (must already point at the VPS).
+# Caddy obtains TLS certificates automatically and proxies WebSockets as-is.
+
+api.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:18080
+}
+
+room.example.com {
+	reverse_proxy 127.0.0.1:18787
+}
+
+# Optional: serve the game itself from the VPS too (otherwise Vercel serves it).
+# game.example.com {
+# 	root * /opt/fishio/app/apps/web
+# 	file_server
+# }

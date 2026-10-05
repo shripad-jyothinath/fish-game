@@ -256,10 +256,17 @@ Top-200 matches per season get full event logs retained for replay-based review.
 |---|---|---|
 | M0 · Extract core | `packages/game-core` runs headless matches in tests | 5-min bot match simulated in < 1 s, deterministic with seed |
 | M1 · 1v1 prototype | Room server + 2 real clients on one map, prediction + interpolation | 2 players see each other with < 150 ms feel; kills validate server-side |
-| M2 · Bots & rooms | Rooms with 24–40 entities, bot fill, room lifecycle, crash checkpoints | 8 humans + 24 bots stable for 10 min; server tick p99 < 8 ms |
+| M2 · Bots & rooms | Rooms with 24–40 entities, room lifecycle, crash checkpoints | 8 humans + 24 bots stable for 10 min; server tick p99 < 8 ms |
 | M3 · Matchmaking | Redis queues, room director, room tickets, reconnect grace | 100 concurrent players across 3 rooms from a cold start |
 | M4 · Persistence & rewards | Results intake → DB → ledger (soft) + HCS digest | Every finished match appears in `matches`; rewards reconcile |
 | M5 · Beta hardening | Load test 300 CCU, anti-cheat limits, metrics dashboards, regional node #2 | 1-hour soak at 300 CCU with no errors; rollback drill passes |
+
+**Status:** M0 ✅ (deterministic headless core, tests green) · M1 ✅ **playable prototype**
+(`apps/room-server` + `apps/web/src/net.js`; 13 room tests incl. a real two-client WebSocket game;
+verified live in two browser tabs at 0 ms local↔server↔peer divergence). M1 ships a continuous
+humans-only arena (death → respawn, 20 s reconnect grace) instead of rounds; note the M2 row's
+"bot fill" is obsolete — humans only, per §1/§7. M2 next (room lifecycle/rounds, 24–40 entity scale,
+tick p99 instrumentation).
 
 Rough calendar: M0–M1 in 2–3 weeks part-time; M2–M3 in 3–4 weeks; M4 in 2 weeks; M5 in 2–3 weeks.
 

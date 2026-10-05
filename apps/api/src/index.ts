@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
+import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import { loadConfig, type ApiConfig } from './config.ts';
 import { loadDotEnv } from './env.ts';
@@ -46,6 +47,19 @@ export function buildServer(config: ApiConfig): FastifyInstance {
 
   app.register(cookie);
 
+  // Cross-site deployments (e.g. the game on Vercel, API here) need an explicit
+  // origin allowlist with credentials; local same-origin play needs nothing.
+  if (config.webOrigins.length > 0) {
+    const allowed = new Set(config.webOrigins);
+    app.register(cors, {
+      origin(origin, callback) {
+        // Allow requests without an Origin header (curl, health checks) and allowlisted sites.
+        callback(null, !origin || allowed.has(origin));
+      },
+      credentials: true,
+    });
+  }
+
   const hedera = createHederaServices(store, loadHederaSettings());
 
   app.get('/healthz', async () => ({ ok: true }));
@@ -66,6 +80,7 @@ export function buildServer(config: ApiConfig): FastifyInstance {
   // --- Accounts & sessions --------------------------------------------------
   registerAuthRoutes(app, store, {
     cookieSecure: config.nodeEnv === 'production',
+    cookieCrossSite: config.webOrigins.length > 0,
     onAccountCreated: (userId) => {
       // Auto-provision the player's managed wallet in the background; failures retry on next use.
       if (hedera.custody) {

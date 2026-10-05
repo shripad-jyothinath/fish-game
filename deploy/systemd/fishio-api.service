@@ -1,0 +1,29 @@
+[Unit]
+Description=Fish.IO API (Fastify: accounts, saves, Hedera)
+Documentation=file:/opt/fishio/app/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fishio
+Group=fishio
+WorkingDirectory=/opt/fishio/app/apps/api
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/fishio/app/apps/api/.env
+ExecStart=/opt/fishio/app/node_modules/.bin/tsx src/index.ts
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# Hardening (the app only needs its own tree + the SQLite data dir)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/fishio/app/apps/api/data
+MemoryMax=768M
+
+[Install]
+WantedBy=multi-user.target

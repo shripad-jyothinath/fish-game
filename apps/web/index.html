@@ -100,6 +100,8 @@
                     </div>
 
                     <button class="btn-primary" id="playBtn" onclick="startGame()">PLAY GAME 🚀</button>
+                    <button class="btn-primary btn-online" id="playOnlineBtn" onclick="startOnlineGame()">PLAY ONLINE 🌐</button>
+                    <div id="onlineStatus" class="online-status hidden"></div>
 
                     <div class="menu-actions">
                         <button class="btn-secondary" onclick="openShop('fish')">🐟 Armory</button>
@@ -167,6 +169,7 @@
             <!-- Top Left: Stats -->
             <div class="hud-top-left">
                 <button class="hud-pause-btn" id="hudPauseBtn" onclick="togglePauseGame()" title="Pause Game (ESC / P)">⏸️</button>
+                <div id="onlineBadge" class="hud-stat-pill online-badge hidden">🌐 <span id="onlinePing">--</span>ms</div>
                 <div class="hud-stat-pill">
                     <span class="icon">⭐</span>
                     <span id="hudLevel">Lv. 1</span>
@@ -457,7 +460,9 @@
     <script src="src/ai.js"></script>
     <script src="src/game.js"></script>
     <script src="src/item3d.js"></script>
+    <script src="config.js"></script>
     <script src="src/api.js"></script>
+    <script src="src/net.js"></script>
 
     <!-- Game Initialization & UI Binding -->
     <script>
@@ -610,6 +615,10 @@
         }
 
         function restartGame() {
+            if (game && game.online) {
+                game.online.respawn();
+                return;
+            }
             if (game.gameMode === 'challenge') {
                 startChallengeLevel(activeLevelStage);
             } else {
@@ -878,7 +887,39 @@
             game.startMatch(selectedMode);
         }
 
+        // M1: join the real-time arena (server-authoritative, humans only).
+        async function startOnlineGame() {
+            if (!game) game = new GameEngine();
+            if (game.online && game.online.active) return;
+            const nameInput = document.getElementById('playerNameInput');
+            if (nameInput && nameInput.value.trim()) {
+                window.shopManager.playerName = nameInput.value.trim();
+                window.shopManager.save();
+            }
+            const sm = window.shopManager;
+            const btn = document.getElementById('playOnlineBtn');
+            const status = document.getElementById('onlineStatus');
+            if (status) status.classList.add('hidden');
+            if (btn) { btn.disabled = true; btn.textContent = 'CONNECTING…'; }
+            try {
+                await window.FishNet.connect(game, {
+                    name: sm.playerName || 'Player',
+                    skinId: sm.selectedFish,
+                    weaponId: sm.selectedWeapon,
+                    hatId: sm.selectedHat,
+                });
+            } catch (err) {
+                if (status) {
+                    status.textContent = `⚠️ ${err && err.message ? err.message : 'Could not join the arena.'}`;
+                    status.classList.remove('hidden');
+                }
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'PLAY ONLINE 🌐'; }
+            }
+        }
+
         function togglePauseGame() {
+            if (game && game.online) return; // online arenas never pause
             if (game) game.togglePause();
         }
 
@@ -897,6 +938,10 @@
         }
 
         function returnToMenu() {
+            if (game && game.online) {
+                game.online.leaveAndExit();
+                return;
+            }
             document.getElementById('gameOverModal').classList.add('hidden');
             document.getElementById('stageClearModal').classList.add('hidden');
             const pauseModal = document.getElementById('pauseModal');

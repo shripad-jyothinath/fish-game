@@ -368,8 +368,8 @@ class GameEngine {
             const code = e.code;
             const key = e.key ? e.key.toLowerCase() : '';
 
-            // Pause toggle with Escape or P
-            if ((code === 'Escape' || code === 'KeyP' || key === 'p') && (this.gameState === 'playing' || this.isPaused)) {
+            // Pause toggle with Escape or P (offline only — online arenas never pause)
+            if ((code === 'Escape' || code === 'KeyP' || key === 'p') && (this.gameState === 'playing' || this.isPaused) && !this.online) {
                 e.preventDefault();
                 this.togglePause();
                 return;
@@ -423,15 +423,15 @@ class GameEngine {
             if (code === 'ArrowRight' || key === 'arrowright') this.keys.right = false;
         });
 
-        // Tab switch & window blur auto-pause
+        // Tab switch & window blur auto-pause (offline only)
         document.addEventListener('visibilitychange', () => {
-            if (document.hidden && this.gameState === 'playing' && !this.isPaused) {
+            if (document.hidden && this.gameState === 'playing' && !this.isPaused && !this.online) {
                 this.pauseGame();
             }
         });
 
         window.addEventListener('blur', () => {
-            if (this.gameState === 'playing' && !this.isPaused) {
+            if (this.gameState === 'playing' && !this.isPaused && !this.online) {
                 this.pauseGame();
             }
         });
@@ -932,6 +932,13 @@ class GameEngine {
     update(dt) {
         if (this.gameState !== 'playing') {
             this.particles.update(dt, this.worldWidth, this.worldHeight);
+            return;
+        }
+
+        // Online (M1): the server owns the world; the online client drives input,
+        // prediction, interpolation and the HUD from snapshots.
+        if (this.online) {
+            this.online.update(dt);
             return;
         }
 

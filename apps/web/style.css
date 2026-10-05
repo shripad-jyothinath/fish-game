@@ -380,6 +380,37 @@ body, html {
     padding: 17px 26px;
 }
 
+/* -- M1 ONLINE BUTTON + STATUS -- */
+.btn-online {
+    background: linear-gradient(180deg, #3d9dff 0%, #1f66c9 100%);
+    margin-top: 8px;
+    font-size: 1.05rem;
+    padding: 12px 20px;
+    width: 100%;
+}
+
+.btn-online:disabled {
+    cursor: wait;
+    filter: saturate(0.6) brightness(0.9);
+}
+
+.online-status {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    background: rgba(4, 22, 48, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    color: #cfe8ff;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-align: center;
+}
+
+.online-badge {
+    color: #7ef0ff;
+    border-color: rgba(126, 240, 255, 0.45);
+}
+
 /* -- SECONDARY BUTTONS -- */
 .btn-secondary {
     background: linear-gradient(180deg, #f0a04b 0%, #d9822b 100%);

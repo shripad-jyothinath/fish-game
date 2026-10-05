@@ -22,12 +22,16 @@
     let linkChallenge = null;
 
     // ===== tiny API helper =====
+    // Absolute API base for split deployments (game on Vercel, API on the VPS).
+    // Empty string = same-origin (local dev / all-in-one hosting).
+    const API_BASE = String(window.FISHIO_API_BASE || '').replace(/\/+$/, '');
+
     async function request(path, { method = 'GET', body } = {}) {
         let res;
         try {
-            res = await fetch(path, {
+            res = await fetch(`${API_BASE}${path}`, {
                 method,
-                credentials: 'same-origin',
+                credentials: API_BASE ? 'include' : 'same-origin',
                 headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
                 body: body !== undefined ? JSON.stringify(body) : undefined,
             });

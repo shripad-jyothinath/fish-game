@@ -12,7 +12,7 @@ bosses. This repo turns it into a full project: **server-authoritative multiplay
 |---|---|---|
 | Hedera integration (tokens, NFTs, HCS) | [`docs/HEDERA_PLAN.md`](docs/HEDERA_PLAN.md) | **Live on testnet** — HCS match receipts, `$GOLD`, NFT collection created; IDs in `apps/api/.env` |
 | Database for many players | [`docs/DATABASE_PLAN.md`](docs/DATABASE_PLAN.md) | Schema v1 + local SQLite accounts (sign-up/login/save sync) |
-| Real-time multiplayer (common map) | [`docs/MULTIPLAYER_PLAN.md`](docs/MULTIPLAYER_PLAN.md) | M0 in progress (headless game-core) |
+| Real-time multiplayer (common map) | [`docs/MULTIPLAYER_PLAN.md`](docs/MULTIPLAYER_PLAN.md) | **M1 playable prototype** — authoritative room server + WebSocket net client (prediction/interpolation) |
 
 **Multiplayer is humans-only.** Bots exist only in offline practice mode (the current game).
 
@@ -22,6 +22,7 @@ bosses. This repo turns it into a full project: **server-authoritative multiplay
 apps/
   web/          the game (vanilla canvas + JS, served statically)
   api/          backend: Fastify + TypeScript, SQL schema, seeds
+  room-server/  M1 realtime arena: WebSocket + headless game-core @60 Hz
 packages/
   game-core/    headless simulation harness + catalog export (server-ready sim)
   shared/       shared types/constants (added as needed)
@@ -48,6 +49,30 @@ progress sync just work — open http://127.0.0.1:8080.
   features need the API.
 
 Controls: mouse/WASD steer · Space/Shift/left-click boost · blade slices fish.
+
+## Play online (M1 prototype)
+
+The room server runs the same simulation as the browser (via `packages/game-core`)
+at 60 Hz and owns all positions, kills and pickups. Clients send inputs only.
+
+```powershell
+npm install
+npm run room:dev          # arena on ws://127.0.0.1:8787 (health: http://127.0.0.1:8787/healthz)
+npm run dev               # in a second terminal: website on http://127.0.0.1:8080
+```
+
+Open http://127.0.0.1:8080 in **two tabs**, enter a name, and press
+**PLAY ONLINE 🌐**. Tabs can also point at another arena with `?room=ws://host:port`
+or `window.FISHIO_ROOM_URL`.
+
+M1 behaviour: continuous humans-only arena (up to 16 by default), local prediction +
+snapshot reconciliation (~125 ms smoothing), remote fish interpolated 100 ms behind,
+delta-encoded food/chests around each player, 20 s reconnect grace, kill feed, live
+leaderboard and ping. Death shows results with a respawn button. Bosses and AI fish
+never spawn online.
+
+Tests: `npm run room:test` (protocol, prediction inputs, deaths, reconnect, flood
+protection, real two-client WebSocket game) · `npm run room:typecheck`.
 
 **Presentation:** the menu showcase and shop thumbnails are real 3D previews —
 procedurally modeled weapons (25), fish (24) and hats (12) rendered with Three.js

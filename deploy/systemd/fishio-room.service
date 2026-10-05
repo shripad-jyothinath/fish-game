@@ -1,0 +1,28 @@
+[Unit]
+Description=Fish.IO room server (authoritative arena, WebSocket)
+Documentation=file:/opt/fishio/app/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fishio
+Group=fishio
+WorkingDirectory=/opt/fishio/app/apps/room-server
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/fishio/app/apps/room-server/.env
+ExecStart=/opt/fishio/app/node_modules/.bin/tsx src/index.ts
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillSignal=SIGTERM
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target

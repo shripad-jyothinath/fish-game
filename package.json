@@ -11,6 +11,10 @@
     "dev": "npm --workspace @fishio/api run dev",
     "api:dev": "npm --workspace @fishio/api run dev",
     "api:start": "npm --workspace @fishio/api run start",
+    "room:dev": "npm --workspace @fishio/room-server run dev",
+    "room:start": "npm --workspace @fishio/room-server run start",
+    "room:test": "npm --workspace @fishio/room-server run test",
+    "room:typecheck": "npm --workspace @fishio/room-server run typecheck",
     "web:serve": "python -m http.server 8137 --bind 127.0.0.1 -d apps/web",
     "game-core:test": "node --test packages/game-core/test/sim.test.js",
     "game-core:sim": "node packages/game-core/bin/sim.js",
@@ -19,7 +23,7 @@
     "hedera:setup": "npm --workspace @fishio/api run hedera:setup",
     "hedera:wallet": "npm --workspace @fishio/api run hedera:wallet",
     "hedera:claim": "npm --workspace @fishio/api run hedera:claim",
-    "typecheck": "tsc --noEmit -p apps/api"
+    "typecheck": "tsc --noEmit -p apps/api && tsc --noEmit -p apps/room-server"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -43,6 +43,21 @@ may be in flight (npm install, sim run) — verify before assuming.
 > homepage preview is the original animated canvas fish). Blob shadows, environment map, 2D/emoji
 > fallback when WebGL is missing. Player name follows the account when signed in
 > (`syncPlayerName` in `apps/web/src/api.js`).
+>
+> **Update (M1 multiplayer prototype — playable):** `apps/room-server` (new workspace,
+> `@fishio/room-server`) runs the real simulation through `@fishio/game-core` at 60 Hz and owns all
+> state. Browsers connect over WebSocket from `apps/web/src/net.js` (new): 30 Hz inputs, local
+> prediction + ~125 ms reconciliation, remote fish interpolated 100 ms behind, delta-encoded nearby
+> food/chests, kill feed, live leaderboard, ping, 20 s reconnect grace with session tokens.
+> **Humans only** — AI and bosses are disabled server-side. Endless arena: death → results → respawn.
+> Protocol is JSON (binary in M2); trust model = validate everything (angle/seq/name/cosmetics/
+> upgrades caps, 8 KB max payload, 120 msg/s flood limit). UI: **PLAY ONLINE 🌐** on the menu
+> (`startOnlineGame()` in `index.html`), `?room=ws://host:port` or `window.FISHIO_ROOM_URL` to pick an
+> arena. Run: `npm run room:dev` + `npm run dev`, two tabs → PLAY ONLINE. Tests: `npm run room:test`
+> (13 tests incl. a real two-client WS game; typecheck `npm run room:typecheck`). Found+fixed one real
+> netcode bug during live testing: reconnect reset the client input `seq` while the server kept its
+> ack window → all inputs dropped after reconnect (regression test added). Not wired yet: accounts,
+> match persistence/Hedera (`/internal/matches` still 501), matchmaking/room director. **Next: M2.**
 
 ---
 
