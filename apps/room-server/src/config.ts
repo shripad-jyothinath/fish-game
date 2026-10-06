@@ -49,6 +49,12 @@ export interface RoomServerConfig {
   maxMessagesPerSecond: number;
   /** Optional room label shown in logs/status. */
   roomName: string;
+  /** API base URL for match reporting (empty disables result intake). */
+  apiUrl: string;
+  /** Shared secret for room tickets + signed results (empty disables both). */
+  internalHmacSecret: string;
+  /** How long to wait for the API to accept a match result. */
+  reportTimeoutMs: number;
 }
 
 function readInt(value: string | undefined, fallback: number, min: number, max: number): number {
@@ -70,5 +76,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = { ...loadDotEnv(), ...proces
     reconnectGraceMs: readInt(env.ROOM_RECONNECT_GRACE_MS, 20_000, 0, 120_000),
     maxMessagesPerSecond: readInt(env.ROOM_MAX_MSGS_PER_SEC, 120, 20, 1000),
     roomName: env.ROOM_NAME?.trim() || 'reef-1',
+    apiUrl: (env.ROOM_API_URL ?? '').trim(),
+    internalHmacSecret: (env.INTERNAL_HMAC_SECRET ?? '').trim(),
+    reportTimeoutMs: readInt(env.ROOM_REPORT_TIMEOUT_MS, 2500, 250, 15_000),
   };
 }

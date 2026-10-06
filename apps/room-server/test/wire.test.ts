@@ -22,6 +22,9 @@ function makeConfig(overrides: Partial<RoomServerConfig> = {}): RoomServerConfig
     reconnectGraceMs: 5_000,
     maxMessagesPerSecond: 120,
     roomName: 'wire-test',
+    apiUrl: '',
+    internalHmacSecret: '',
+    reportTimeoutMs: 1000,
     ...overrides,
   };
 }

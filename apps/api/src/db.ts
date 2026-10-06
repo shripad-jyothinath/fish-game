@@ -153,6 +153,14 @@ export interface EntitlementRow {
   created_at: number;
 }
 
+export interface GoldConversionRow {
+  id: string;
+  user_id: string;
+  gold_spent: number;
+  gold_amount: number;
+  created_at: number;
+}
+
 export type Store = ReturnType<typeof openDatabase>;
 
 export function openDatabase(dbPath: string) {
@@ -295,6 +303,14 @@ export function openDatabase(dbPath: string) {
       `UPDATE entitlements SET status = 'active', hedera_tx_id = COALESCE(?, hedera_tx_id) WHERE id = ?`,
     ),
     deleteEntitlementStmt: db.prepare(`DELETE FROM entitlements WHERE id = ?`),
+
+    insertGoldConversion: db.prepare(
+      `INSERT INTO gold_conversions (id, user_id, gold_spent, gold_amount, created_at)
+       VALUES (@id, @user_id, @gold_spent, @gold_amount, @created_at)`,
+    ),
+    sumGoldConvertedSinceStmt: db.prepare(
+      `SELECT COALESCE(SUM(gold_spent), 0) AS total FROM gold_conversions WHERE user_id = ? AND created_at >= ?`,
+    ),
   };
 
   return {
@@ -504,6 +520,15 @@ export function openDatabase(dbPath: string) {
     },
     deleteEntitlement(id: string): void {
       stmts.deleteEntitlementStmt.run(id);
+    },
+
+    // -------------------------------------------------------- gold conversions
+    insertGoldConversion(row: GoldConversionRow): void {
+      stmts.insertGoldConversion.run(row);
+    },
+    sumGoldConvertedSince(userId: string, since: number): number {
+      const row = stmts.sumGoldConvertedSinceStmt.get(userId, since) as { total: number } | undefined;
+      return row?.total ?? 0;
     },
 
     close(): void {

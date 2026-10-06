@@ -70,6 +70,23 @@ may be in flight (npm install, sim run) — verify before assuming.
 > on testnet: match → HCS #2 → claim 28 `$GOLD` → buy Ninja Katana (2) → wallet 28→26 → duplicate
 > purchase 409. Still open: gold→$GOLD direction (needs server-authoritative gold), item
 > ownership for `ownsItem` beyond the save blob, M4 online-arena results.
+>
+> **Update ($GOLD conversion + M4 online result intake — live):** two more pieces landed.
+> (1) **💰 → `$GOLD` conversion**: account panel converts in-game gold into pending `$GOLD`
+> (`POST /api/v1/hedera/gold/convert`, rate/caps in `HederaSettings` — default 100 💰 = 1
+> `$GOLD`, 20k 💰/day, audit in `gold_conversions`, credit as a pending `payout_claims` row;
+> client deducts local gold). (2) **M4**: `POST /api/v1/hedera/room-ticket` issues a 10-min
+> HMAC ticket (`hedera/tickets.ts`, mirrored verify in `room-server/src/tickets.ts`, cross-app
+> test guards drift); the client passes it in `hello`; on death the room posts server-authored
+> stats to `POST /internal/matches` (content type `application/vnd.fishio.intake+json`,
+> `x-fishio-signature`) which runs the normal HCS + reward pipeline and replies with the
+> receipt — relayed to the client as a `match_receipt` message shown on the game-over modal.
+> Room env: `ROOM_API_URL` + `INTERNAL_HMAC_SECRET` (same value as the API). Tests: room 15/15
+> (incl. fake intake server verifying signatures + ticket linkage), API 14/14 (conversion caps,
+> ticket round-trip/tamper, signed intake integration). Remaining known gaps: offline match
+> stats are still self-reported (online arena is now exact); external-linked wallets can't buy
+> with `$GOLD` yet (needs WalletConnect signing); gold earned offline is client-side before
+> conversion (caps bound it).
 
 ---
 

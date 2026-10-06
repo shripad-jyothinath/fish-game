@@ -171,9 +171,18 @@
       return this.openSocket(true);
     }
 
-    openSocket(isFirst) {
+    async openSocket(isFirst) {
       this.state = 'connecting';
       this.setMenuStatus(isFirst ? 'Connecting to the arena…' : 'Reconnecting…');
+
+      // Signed-in players get a short-lived room ticket so server-authored match
+      // results can be recorded on-chain (M4). Guests simply play without it.
+      let ticket = null;
+      try {
+        if (typeof window.fishGetRoomTicket === 'function') ticket = await window.fishGetRoomTicket();
+      } catch {
+        ticket = null;
+      }
 
       return new Promise((resolve, reject) => {
         let settled = false;
@@ -206,6 +215,7 @@
             vw: window.innerWidth,
             vh: window.innerHeight,
             token: this.token || undefined,
+            ticket: ticket || undefined,
           }));
         };
 
@@ -252,6 +262,7 @@
         case 'spawn': this.onFullState(msg, false); break;
         case 'snap': this.onSnapshot(msg); break;
         case 'match_end': this.onMatchEnd(msg); break;
+        case 'match_receipt': this.onMatchReceipt(msg); break;
         case 'pong': this.ping = Math.max(1, Math.round(Date.now() - Number(msg.ct))); break;
         case 'error': this.setMenuStatus(`Join failed: ${msg.code}`); break;
         case 'bye': this.onBye(msg); break;
@@ -362,6 +373,11 @@
       hide('gameOverModal');
       hide('pauseModal');
       document.querySelectorAll('.modal-backdrop').forEach((el) => el.classList.add('hidden'));
+      const receiptEl = document.getElementById('hederaReceipt');
+      if (receiptEl) {
+        receiptEl.classList.add('hidden');
+        receiptEl.innerHTML = '';
+      }
       show('hudOverlay');
       this.setMenuStatus('');
       const badge = document.getElementById('onlineBadge');
@@ -557,6 +573,25 @@
 
       const shutdown = msg.reason === 'server_shutdown';
       this.deathTimer = setTimeout(() => this.showDeathModal(shutdown), 900);
+    }
+
+    /** Server-reported result for an online match (M4 intake). */
+    onMatchReceipt(msg) {
+      this.lastReceipt = msg;
+      const target = document.getElementById('hederaReceipt');
+      const reward =
+        msg.reward && typeof msg.reward.amount === 'number' ? ` · +${msg.reward.amount} $GOLD pending` : '';
+      if (target) {
+        target.classList.remove('hidden');
+        if (msg.receipt && msg.receipt.hashscanUrl) {
+          target.innerHTML = `<span class="hedera-badge">⛓ Hedera</span> online match recorded${reward} <a href="${msg.receipt.hashscanUrl}" target="_blank" rel="noopener">view on HashScan ↗</a>`;
+        } else if (msg.receipt) {
+          target.innerHTML = `<span class="hedera-badge warn">⛓ Hedera</span> match saved to your account${reward}`;
+        } else {
+          target.innerHTML = `<span class="hedera-badge muted">⛓ Hedera</span> match recorded${reward}`;
+        }
+      }
+      if (window.fishToast) window.fishToast(`⛓ Online match recorded${reward}`);
     }
 
     showDeathModal(shutdown) {

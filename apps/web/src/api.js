@@ -399,6 +399,17 @@
         html += `<div class="hedera-head"><span class="hedera-badge">⛓ Hedera</span><span class="hedera-status ${online ? 'on' : 'off'}">${statusLabel}</span></div>`;
         html += `<div class="hedera-row"><span>$GOLD tokens</span><span>${goldLine}</span></div>`;
 
+        if (online && gold && gold.enabled) {
+            const rate = gold.convertRate || 100;
+            const remaining = typeof gold.convertRemaining === 'number' ? gold.convertRemaining : null;
+            html += `<div class="hedera-row"><span>Convert in-game gold</span><span>${rate} 💰 = 1 $GOLD${remaining != null ? ` · ${remaining} 💰 left today` : ''}</span></div>`;
+            html += `<div class="hedera-actions">
+                <input class="hedera-input" id="hederaConvertInput" type="number" min="${rate}" step="${rate}" placeholder="${rate * 5}">
+                <button class="hedera-btn primary" onclick="fishConvertGold()">Convert 💰 → $GOLD</button>
+            </div>
+            <div class="hedera-muted">Gold is deducted in-game; the $GOLD lands in your pending rewards (claim to move it on-chain).</div>`;
+        }
+
         if (link && link.linked) {
             const managed = link.link && link.link.method === 'custodial';
             html += `<div class="hedera-row"><span>Wallet</span><span class="hedera-account">${escapeHtml(link.link.accountId)}${managed ? ' · managed' : ''}</span></div>`;
@@ -557,6 +568,32 @@
             renderHederaPanel();
         } catch (err) {
             showToast(err.message);
+        }
+    }
+
+    async function fishConvertGold() {
+        const input = document.getElementById('hederaConvertInput');
+        const goldAmount = input ? Number(input.value) : 0;
+        if (!Number.isFinite(goldAmount) || goldAmount <= 0) {
+            showToast('Enter how much in-game gold to convert');
+            return;
+        }
+        const sm = window.shopManager;
+        if (!sm || sm.gold < goldAmount) {
+            showToast('Not enough in-game gold');
+            return;
+        }
+        try {
+            const result = await request('/api/v1/hedera/gold/convert', { method: 'POST', body: { gold: goldAmount } });
+            // Charge only what the server actually converted (whole rate multiples).
+            sm.gold = Math.max(0, sm.gold - result.gold);
+            if (typeof sm.save === 'function') sm.save();
+            if (typeof updateMenuStats === 'function') updateMenuStats();
+            showToast(`Converted ${result.gold} 💰 → +${result.amount} $GOLD pending`);
+            renderHederaPanel();
+            void refreshGoldShop();
+        } catch (err) {
+            showToast(err.message || 'Conversion failed');
         }
     }
 
@@ -746,7 +783,16 @@
     window.fishUnlinkWallet = fishUnlinkWallet;
     window.fishExportWallet = fishExportWallet;
     window.fishClaimGold = fishClaimGold;
+    window.fishConvertGold = fishConvertGold;
     window.fishMintItem = fishMintItem;
+    window.fishGetRoomTicket = async function fishGetRoomTicket() {
+        try {
+            const result = await request('/api/v1/hedera/room-ticket', { method: 'POST', body: {} });
+            return (result && result.ticket) || null;
+        } catch {
+            return null; // guest play (or tickets not configured)
+        }
+    };
     window.fishGoldShop = {
         refresh: refreshGoldShop,
         priceFor: goldPriceFor,

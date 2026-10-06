@@ -3,9 +3,12 @@
  * disconnect grace + reconnect, flood protection, validation.
  */
 import assert from 'node:assert/strict';
+import http from 'node:http';
 import test from 'node:test';
+import { signInternalBody, signRoomTicket, verifyInternalBody } from '../../api/src/hedera/tickets.ts';
 import type { RoomServerConfig } from '../src/config.ts';
 import { Room, type ClientSocket } from '../src/room.ts';
+import { verifyRoomTicket } from '../src/tickets.ts';
 import type { FullStateMessage, MatchEndMessage, SnapshotMessage } from '../src/protocol.ts';
 
 type WireMessage = Record<string, any>;
@@ -43,6 +46,9 @@ function makeConfig(overrides: Partial<RoomServerConfig> = {}): RoomServerConfig
     reconnectGraceMs: 20_000,
     maxMessagesPerSecond: 120,
     roomName: 'test-reef',
+    apiUrl: '',
+    internalHmacSecret: '',
+    reportTimeoutMs: 1000,
     ...overrides,
   };
 }
@@ -272,4 +278,87 @@ test('shutdown broadcasts bye and clears players', () => {
   assert.equal(bye!.reason, 'server_shutdown');
   assert.equal(room.players.size, 0);
   assert.equal(socket.closed?.code, 1001);
+});
+
+test('room tickets verify cross-app and link arena sessions to accounts', () => {
+  const secret = 'ticket-secret';
+
+  // Format compatibility: API signs, room verifies.
+  const ticket = signRoomTicket(secret, 'user-1', 'alice', 60_000);
+  assert.equal(verifyRoomTicket(secret, ticket)?.u, 'user-1', 'cross-app ticket format');
+
+  const room = new Room(makeConfig({ internalHmacSecret: secret }));
+  const socket = new FakeSocket();
+  const player = joinOk(room, socket, { ticket });
+  assert.equal(player.accountId, 'user-1');
+  assert.equal(player.username, 'alice');
+  assert.equal(room.roster()[0]?.account, 'user-1');
+
+  // Forged/expired tickets fall back to guest play, never to another account.
+  const guestSocket = new FakeSocket();
+  const guest = joinOk(room, guestSocket, { ticket: 'forged.ticket' });
+  assert.equal(guest.accountId, null);
+  const expired = signRoomTicket(secret, 'user-2', 'bob', -1000);
+  const expiredSocket = new FakeSocket();
+  const expiredPlayer = joinOk(room, expiredSocket, { ticket: expired });
+  assert.equal(expiredPlayer.accountId, null, 'expired tickets are guests');
+  room.stop();
+});
+
+test('deaths post signed, server-authored results and relay the receipt', async () => {
+  const secret = 'report-secret';
+  const received: Array<{ body: string; signature: string }> = [];
+  const api = http.createServer((req, res) => {
+    let data = '';
+    req.on('data', (chunk) => (data += chunk));
+    req.on('end', () => {
+      received.push({ body: data, signature: String(req.headers['x-fishio-signature'] ?? '') });
+      res.writeHead(201, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          matchId: 'm-1',
+          reward: { amount: 7 },
+          receipt: { status: 'submitted', hashscanUrl: 'https://hashscan.example/tx' },
+        }),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => api.listen(0, '127.0.0.1', () => resolve()));
+  const port = (api.address() as { port: number }).port;
+
+  const room = new Room(
+    makeConfig({ internalHmacSecret: secret, apiUrl: `http://127.0.0.1:${port}`, reportTimeoutMs: 3000 }),
+  );
+  try {
+    const killerSocket = new FakeSocket();
+    const victimSocket = new FakeSocket();
+    const killer = joinOk(room, killerSocket, { name: 'Killer' });
+    const victim = joinOk(room, victimSocket, {
+      name: 'Victim',
+      ticket: signRoomTicket(secret, 'user-9', 'victim'),
+    });
+
+    room.game.killFish(killer.fish!, victim.fish!, room.game.bots);
+    tick(room, 2);
+
+    const deadline = Date.now() + 4000;
+    while (Date.now() < deadline && !victimSocket.last('match_receipt')) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+
+    const receipt = victimSocket.last('match_receipt');
+    assert.ok(receipt, 'receipt relayed to the player');
+    assert.equal(receipt!.matchId, 'm-1');
+    assert.equal(receipt!.reward.amount, 7);
+    assert.equal(receipt!.receipt.status, 'submitted');
+
+    assert.equal(received.length, 1, 'exactly one signed report');
+    assert.equal(verifyInternalBody(secret, received[0]!.body, received[0]!.signature), true, 'signature valid');
+    const parsed = JSON.parse(received[0]!.body) as { userId: string; stats: { score: number; kills: number } };
+    assert.equal(parsed.userId, 'user-9');
+    assert.equal(typeof parsed.stats.score, 'number');
+  } finally {
+    room.stop();
+    await new Promise<void>((resolve) => api.close(() => resolve()));
+  }
 });

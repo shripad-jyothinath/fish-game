@@ -31,6 +31,8 @@ export interface HelloMessage {
   vw?: unknown;
   vh?: unknown;
   token?: unknown;
+  /** Signed room ticket (links this session to an API account for rewards). */
+  ticket?: unknown;
 }
 
 export interface InputMessage {
@@ -146,6 +148,20 @@ export interface MatchEndMessage {
   t: 'match_end';
   reason: 'dead' | 'server_shutdown' | 'removed';
   stats: { score: number; kills: number; level: number; time: number };
+}
+
+/** Sent right after match_end when the API accepted a server-authored result. */
+export interface MatchReceiptMessage {
+  t: 'match_receipt';
+  matchId: string | null;
+  reward: { amount: number; dailyRemaining?: number } | null;
+  receipt: {
+    status?: string;
+    topicId?: string | null;
+    sequenceNumber?: number | null;
+    transactionId?: string | null;
+    hashscanUrl?: string | null;
+  } | null;
 }
 
 export interface PongMessage {

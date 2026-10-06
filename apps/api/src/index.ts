@@ -13,8 +13,8 @@
  *   GET  /api/v1/auth/me          current account
  *   GET  /api/v1/me/save          download account save
  *   PUT  /api/v1/me/save          upload account save
- *   POST /internal/matches        room server results intake (stub, 501)
- *   GET  /api/v1/leaderboard      season leaderboard (stub)
+ *   GET  /api/v1/leaderboard      season leaderboard
+ *   (and, in routes.ts: match intake, $GOLD shop, room tickets, NFTs, ...)
  */
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -94,14 +94,8 @@ export function buildServer(config: ApiConfig): FastifyInstance {
   const requireUser = makeAuthGuard(store);
   registerSaveRoutes(app, store, requireUser);
 
-  // --- Matches, $GOLD, NFTs, wallet links, leaderboard ----------------------
-  registerHederaRoutes(app, store, hedera, requireUser);
-
-  // --- Match results intake from room servers (Phase M4) ---------------------
-  app.post('/internal/matches', async (req, reply) => {
-    reply.code(501);
-    return { error: 'not_implemented', detail: 'room server posts HMAC-signed results in Phase M4' };
-  });
+  // --- Matches, $GOLD, shop, tickets, internal intake, leaderboard ----------
+  registerHederaRoutes(app, store, hedera, requireUser, { hmacSecret: config.internalHmacSecret });
 
   // --- The website itself (registered last; API routes win over the wildcard)
   app.register(fastifyStatic, { root: WEB_ROOT, prefix: '/' });

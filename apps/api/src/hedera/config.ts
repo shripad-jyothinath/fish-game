@@ -20,6 +20,10 @@ export interface HederaSettings {
   rewardDailyCap: number;
   rewardMatchCap: number;
   matchCooldownMs: number;
+  /** 💰 → $GOLD conversion: in-game gold needed for 1 $GOLD. */
+  goldConvertRate: number;
+  /** Max in-game gold convertible per UTC day (0 disables conversion). */
+  goldConvertDailyGold: number;
   /** Per-item mint caps: itemId → max copies in existence. */
   editionLimits: Record<string, number>;
   /** Create a managed wallet for every account (true unless HEDERA_AUTO_WALLETS=false). */
@@ -87,6 +91,8 @@ export function loadHederaSettings(env: NodeJS.ProcessEnv = process.env): Hedera
     rewardDailyCap: num(env.HEDERA_REWARD_DAILY_CAP, 500),
     rewardMatchCap: num(env.HEDERA_REWARD_MATCH_CAP, 100),
     matchCooldownMs: num(env.HEDERA_MATCH_COOLDOWN_MS, 10_000),
+    goldConvertRate: Math.max(1, Math.floor(num(env.GOLD_CONVERT_RATE, 100))),
+    goldConvertDailyGold: Math.floor(num(env.GOLD_CONVERT_DAILY_GOLD, 20_000)),
     editionLimits: parseEditionLimits(env.HEDERA_EDITION_LIMITS),
     autoWallets: env.HEDERA_AUTO_WALLETS !== 'false',
     mirrorBaseUrl: (env.HEDERA_MIRROR_URL ?? '').trim() || MIRROR_BASE[network],

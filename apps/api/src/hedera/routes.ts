@@ -10,6 +10,9 @@
  *   DEL  /api/v1/hedera/link            unlink wallet (auth)
  *   GET  /api/v1/hedera/gold            $GOLD totals + wallet balance (auth)
  *   POST /api/v1/hedera/gold/claim      pay out pending $GOLD (auth)
+ *   POST /api/v1/hedera/gold/convert    💰 → pending $GOLD (auth, capped)
+ *   POST /api/v1/hedera/room-ticket     signed ticket for online arenas (auth)
+ *   POST /internal/matches              room-server result intake (HMAC-signed)
  *   GET  /api/v1/hedera/shop            $GOLD shop catalog + prices (public)
  *   POST /api/v1/hedera/shop/purchase   buy a cosmetic with $GOLD (auth)
  *   GET  /api/v1/me/entitlements        server-side owned items (auth)
@@ -28,6 +31,7 @@ import { hashscanNftUrl, hashscanTxUrl } from './config.ts';
 import type { MatchStats } from './rewards.ts';
 import type { HederaServices } from './services.ts';
 import { findGoldShopItem, goldShop } from './shop.ts';
+import { signRoomTicket, verifyInternalBody, verifyRoomTicket } from './tickets.ts';
 import { WalletLinkError } from './wallet.ts';
 
 const ITEM_TYPES = ['fish', 'weapon', 'hat'] as const;
@@ -111,7 +115,13 @@ ${editionLine}
 </svg>`;
 }
 
-export function registerHederaRoutes(app: FastifyInstance, store: Store, services: HederaServices, requireUser: AuthGuard): void {
+export function registerHederaRoutes(
+  app: FastifyInstance,
+  store: Store,
+  services: HederaServices,
+  requireUser: AuthGuard,
+  internal: { hmacSecret: string },
+): void {
   const { settings } = services;
 
   // ---------------------------------------------------------------- status
@@ -309,6 +319,9 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
     const custodial = services.custody?.getWallet(user.id) ?? null;
     const walletAccountId = link?.accountId ?? custodial?.accountId ?? null;
     const tokenId = settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')?.resource_id || null;
+    const day = new Date();
+    const dayStart = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+    const convertedToday = store.sumGoldConvertedSince(user.id, dayStart);
     let balance: number | null = null;
     if (services.online && walletAccountId && tokenId) {
       try {
@@ -331,6 +344,8 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
       accountId: link?.accountId ?? null,
       walletAccountId,
       balance,
+      convertRate: settings.goldConvertRate,
+      convertRemaining: Math.max(0, settings.goldConvertDailyGold - convertedToday),
     };
   });
 
@@ -352,6 +367,87 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
       }
       app.log.error({ err }, 'gold claim failed');
       return reply.code(502).send(errorBody('payout_failed', 'On-chain payout failed. Your $GOLD stays pending; try again.'));
+    }
+  });
+
+  // ------------------------------------------------------- $GOLD conversion
+  app.post('/api/v1/hedera/gold/convert', { preHandler: requireUser }, async (req, reply) => {
+    const user = req.user;
+    if (!user) return reply.code(401).send(errorBody('unauthorized', 'Sign in required.'));
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const result = services.rewards.convertGold(user.id, Number(body.gold));
+      return { ...result, symbol: settings.goldSymbol };
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'below_minimum' || code === 'invalid_amount' || code === 'conversion_disabled') {
+        return reply.code(400).send(errorBody(code, (err as Error).message));
+      }
+      throw err;
+    }
+  });
+
+  // --------------------------------------------------- online arena tickets
+  app.post('/api/v1/hedera/room-ticket', { preHandler: requireUser }, async (req, reply) => {
+    const user = req.user;
+    if (!user) return reply.code(401).send(errorBody('unauthorized', 'Sign in required.'));
+    if (!internal.hmacSecret) {
+      return reply.code(503).send(errorBody('tickets_disabled', 'Room tickets are not configured on this server.'));
+    }
+    return { ticket: signRoomTicket(internal.hmacSecret, user.id, user.username), expiresInMs: 10 * 60 * 1000 };
+  });
+
+  // ---------------------------------------------- room-server result intake
+  // The room server posts finished online matches here. A dedicated raw content
+  // type means the HMAC signature covers the exact bytes that were sent, with no
+  // re-serialization differences.
+  app.addContentTypeParser('application/vnd.fishio.intake+json', { parseAs: 'string' }, (_req, body, done) => {
+    done(null, body);
+  });
+
+  app.post('/internal/matches', async (req, reply) => {
+    const secret = internal.hmacSecret;
+    if (!secret) return reply.code(503).send(errorBody('intake_disabled', 'Match intake is not configured.'));
+
+    const rawBody = typeof req.body === 'string' ? req.body : '';
+    const signature = req.headers['x-fishio-signature'];
+    if (!rawBody || !verifyInternalBody(secret, rawBody, signature)) {
+      return reply.code(401).send(errorBody('bad_signature', 'Invalid signature.'));
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      body = JSON.parse(rawBody) as Record<string, unknown>;
+    } catch {
+      return reply.code(400).send(errorBody('bad_body', 'Body must be JSON.'));
+    }
+
+    const userId = typeof body.userId === 'string' ? body.userId : '';
+    const user = userId ? store.findUserById(userId) : undefined;
+    if (!user) return reply.code(404).send(errorBody('unknown_user', 'No such account.'));
+
+    const input = (body.stats ?? {}) as Record<string, unknown>;
+    const stats: MatchStats = {
+      mode: input.mode === 'frenzy' ? 'frenzy' : 'classic',
+      score: clampInt(input.score, 0, 10_000_000, 0),
+      kills: clampInt(input.kills, 0, 10_000, 0),
+      level: clampInt(input.level, 1, 1000, 1),
+      food: clampInt(input.food, 0, 1_000_000, 0),
+      chests: clampInt(input.chests, 0, 100_000, 0),
+      kingTime: clampInt(input.kingTime, 0, 100_000, 0),
+      durationMs: clampInt(input.durationMs, 0, 60 * 60 * 1000, 0),
+    };
+
+    try {
+      const result = await services.rewards.recordMatch(user.id, stats);
+      return reply.code(201).send({ user: { id: user.id, username: user.username }, ...result });
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'match_cooldown') {
+        return reply.code(429).send(errorBody('match_cooldown', (err as Error).message));
+      }
+      app.log.error({ err, userId: user.id }, 'internal match intake failed');
+      return reply.code(500).send(errorBody('record_failed', 'Could not record the match.'));
     }
   });
 

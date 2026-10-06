@@ -106,6 +106,17 @@ CREATE TABLE IF NOT EXISTS payout_claims (
 );
 CREATE INDEX IF NOT EXISTS idx_payouts_user_status ON payout_claims (user_id, status);
 
+-- 💰 → $GOLD conversions (audit + daily cap tracking). The resulting $GOLD is
+-- credited as a pending payout_claim row (match_id NULL).
+CREATE TABLE IF NOT EXISTS gold_conversions (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    gold_spent  INTEGER NOT NULL,
+    gold_amount INTEGER NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gold_conversions_user ON gold_conversions (user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS nft_items (
     id            TEXT PRIMARY KEY,
     user_id       TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,

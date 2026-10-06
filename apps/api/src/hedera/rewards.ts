@@ -61,6 +61,12 @@ function startOfUtcDay(now = Date.now()): number {
   return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
+function codedError(code: string, message: string): Error {
+  const error = new Error(message);
+  (error as Error & { code?: string }).code = code;
+  return error;
+}
+
 export class RewardService {
   constructor(
     private readonly store: Store,
@@ -168,6 +174,64 @@ export class RewardService {
 
   totals(userId: string): { pending: number; paid: number; totalEarned: number } {
     return this.store.rewardTotals(userId);
+  }
+
+  /**
+   * Convert in-game 💰 into pending $GOLD at the configured rate. Converted
+   * gold flows through the same pending/claim pipeline as match rewards.
+   *
+   * Trust note: the client deducts its local gold before calling this; the
+   * server enforces the rate and a daily gold cap so abuse stays bounded.
+   * M4 room results (server-authored) can later feed this server-side too.
+   */
+  convertGold(
+    userId: string,
+    rawGold: number,
+  ): { gold: number; amount: number; rate: number; dailyRemaining: number; pending: number } {
+    const now = Date.now();
+    const rate = this.settings.goldConvertRate;
+    const dailyCap = this.settings.goldConvertDailyGold;
+    if (dailyCap <= 0) throw codedError('conversion_disabled', 'Gold conversion is disabled on this server.');
+    if (!Number.isFinite(rawGold)) throw codedError('invalid_amount', 'Enter a gold amount.');
+
+    const gold = Math.floor(rawGold);
+    if (gold <= 0) throw codedError('invalid_amount', 'Enter a positive gold amount.');
+
+    const spentToday = this.store.sumGoldConvertedSince(userId, startOfUtcDay(now));
+    const remaining = Math.max(0, dailyCap - spentToday);
+    const amount = Math.floor(Math.min(gold, remaining) / rate);
+    if (amount <= 0) {
+      throw codedError('below_minimum', `You need at least ${rate} 💰 to convert (daily cap left: ${remaining} 💰).`);
+    }
+    const spent = amount * rate;
+
+    this.store.insertGoldConversion({
+      id: randomUUID(),
+      user_id: userId,
+      gold_spent: spent,
+      gold_amount: amount,
+      created_at: now,
+    });
+    this.store.insertPayoutClaim({
+      id: randomUUID(),
+      user_id: userId,
+      match_id: null, // converted gold, not a match reward
+      amount,
+      currency: 'gold_token',
+      status: 'pending',
+      hedera_tx_id: null,
+      error: null,
+      created_at: now,
+      confirmed_at: null,
+    });
+
+    return {
+      gold: spent,
+      amount,
+      rate,
+      dailyRemaining: Math.max(0, remaining - spent),
+      pending: this.totals(userId).pending,
+    };
   }
 
   async claim(userId: string, wallet: WalletService): Promise<{ amount: number; payment: TokenPayment }> {

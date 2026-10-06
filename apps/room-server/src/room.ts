@@ -25,6 +25,7 @@ import {
   type ServerEvent,
   type SnapshotMessage,
 } from './protocol.ts';
+import { signInternalBody, verifyRoomTicket } from './tickets.ts';
 
 export interface ClientSocket {
   send(data: string): void;
@@ -56,6 +57,9 @@ export type PlayerRecord = {
   // Flood protection window.
   msgWindowStart: number;
   msgCount: number;
+  /** API account this session belongs to (from a signed room ticket). */
+  accountId: string | null;
+  username: string | null;
 };
 
 export type JoinResult = { player: PlayerRecord } | { error: 'room_full' | 'bad_loadout' | 'shutdown' };
@@ -216,6 +220,7 @@ export class Room {
       inputAngle: Math.round(p.input.angle * 100) / 100,
       lastInputAgoMs: now - p.lastInputAt,
       msgsThisWindow: p.msgCount,
+      account: p.accountId,
       fish: p.fish
         ? {
             x: Math.round(p.fish.x),
@@ -245,6 +250,20 @@ export class Room {
     const vw = isFiniteNumber(hello.vw) ? clamp(hello.vw, 320, 4096) : 1280;
     const vh = isFiniteNumber(hello.vh) ? clamp(hello.vh, 320, 4096) : 720;
 
+    // Optional signed room ticket → links this session to an API account so
+    // finished matches can be recorded on-chain (M4 result intake).
+    let accountId: string | null = null;
+    let ticketName: string | null = null;
+    if (this.config.internalHmacSecret && typeof hello.ticket === 'string' && hello.ticket) {
+      const payload = verifyRoomTicket(this.config.internalHmacSecret, hello.ticket);
+      if (payload) {
+        accountId = payload.u;
+        ticketName = payload.n || null;
+      } else {
+        console.warn('[room] ignoring invalid/expired room ticket');
+      }
+    }
+
     // Reconnect with a previous session token.
     if (typeof hello.token === 'string' && hello.token.length >= 8) {
       const existing = [...this.players.values()].find((p) => p.token === hello.token);
@@ -257,11 +276,15 @@ export class Room {
           }
         }
         // Rebind a fresh connection: the client restarts its sequence counter,
-      // so the server must restart its ack window too.
-      existing.input = { seq: 0, angle: existing.input.angle, boost: false };
-      existing.lastInputAt = Date.now();
-      existing.socket = socket;
+        // so the server must restart its ack window too.
+        existing.input = { seq: 0, angle: existing.input.angle, boost: false };
+        existing.lastInputAt = Date.now();
+        existing.socket = socket;
         existing.disconnectedAt = null;
+        if (accountId) {
+          existing.accountId = accountId;
+          existing.username = ticketName ?? existing.username;
+        }
         existing.name = name;
         existing.skinId = skinId;
         existing.weaponId = weaponId;
@@ -306,6 +329,8 @@ export class Room {
       sentPowerups: new Map(),
       msgWindowStart: Date.now(),
       msgCount: 0,
+      accountId,
+      username: accountId ? ticketName : null,
     };
     this.players.set(player.id, player);
     this.spawnFish(player);
@@ -491,6 +516,66 @@ export class Room {
     player.fish = null;
     player.alive = false;
     this.sendMatchEnd(player, 'dead');
+    // Server-authored result intake (only for sessions with a signed ticket).
+    void this.reportMatch(player);
+  }
+
+  /**
+   * Post a finished online match to the API (`/internal/matches`, HMAC-signed).
+   * Stats come from the authoritative simulation. Runs after match_end was
+   * already sent so the death UX never blocks; the API's reply arrives as a
+   * follow-up `match_receipt` message.
+   */
+  private async reportMatch(player: PlayerRecord): Promise<void> {
+    const { apiUrl, internalHmacSecret, reportTimeoutMs } = this.config;
+    if (!player.accountId || !apiUrl || !internalHmacSecret) return;
+
+    const body = JSON.stringify({
+      userId: player.accountId,
+      stats: {
+        mode: 'classic',
+        score: Math.max(0, Math.round(player.stats.score)),
+        kills: Math.max(0, Math.round(player.stats.kills)),
+        level: Math.max(1, Math.round(player.stats.level)),
+        food: 0,
+        chests: 0,
+        kingTime: 0,
+        durationMs: Math.max(0, Math.round(this.game.matchTime * 1000)),
+      },
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), reportTimeoutMs);
+    try {
+      const res = await fetch(`${apiUrl.replace(/\/+$/, '')}/internal/matches`, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/vnd.fishio.intake+json',
+          'x-fishio-signature': signInternalBody(internalHmacSecret, body),
+        },
+        body,
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        console.warn(`[room] match report rejected (${res.status}) for ${player.username ?? player.name}`);
+        return;
+      }
+      const payload = (await res.json()) as {
+        matchId?: string;
+        reward?: { amount: number; dailyRemaining?: number };
+        receipt?: Record<string, unknown>;
+      };
+      this.send(player, {
+        t: 'match_receipt',
+        matchId: payload.matchId ?? null,
+        reward: payload.reward ?? null,
+        receipt: payload.receipt ?? null,
+      });
+    } catch (err) {
+      console.warn('[room] match report failed:', (err as Error).message);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private sendMatchEnd(player: PlayerRecord, reason: MatchEndMessage['reason']): void {

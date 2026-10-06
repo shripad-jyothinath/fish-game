@@ -14,9 +14,12 @@ import { decryptSecret, encryptSecret, type CustodyService } from '../src/hedera
 import { openDatabase, type NftItemRow } from '../src/db.ts';
 import { loadDotEnv } from '../src/env.ts';
 import { decodeMemo, MirrorClient } from '../src/hedera/mirror.ts';
-import { calculateGoldReward } from '../src/hedera/rewards.ts';
+import { calculateGoldReward, RewardService } from '../src/hedera/rewards.ts';
 import { findGoldShopItem, goldPriceFor, goldShop } from '../src/hedera/shop.ts';
+import { signInternalBody, signRoomTicket, verifyRoomTicket } from '../src/hedera/tickets.ts';
 import { isValidHederaAccountId, stripChecksum, verifyMessageSignature, WalletService } from '../src/hedera/wallet.ts';
+import { buildServer } from '../src/index.ts';
+import { loadConfig } from '../src/config.ts';
 
 const settings: HederaSettings = {
   enabled: true,
@@ -33,6 +36,8 @@ const settings: HederaSettings = {
   rewardDailyCap: 500,
   rewardMatchCap: 100,
   matchCooldownMs: 10000,
+  goldConvertRate: 100,
+  goldConvertDailyGold: 20_000,
   editionLimits: { golden_leviathan: 1 },
   autoWallets: true,
   mirrorBaseUrl: 'https://example.invalid',
@@ -278,4 +283,120 @@ test('entitlements reserve atomically, activate, and free slots on delete', () =
   store.deleteEntitlement('e1');
   assert.equal(store.findEntitlement('u1', 'weapon', 'excalibur'), undefined);
   store.close();
+});
+
+test('gold → $GOLD conversion respects rate and daily cap', () => {
+  const convertSettings: HederaSettings = { ...settings, goldConvertRate: 100, goldConvertDailyGold: 250 };
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  const rewards = new RewardService(store, convertSettings, undefined, undefined);
+
+  const first = rewards.convertGold('u1', 1000); // capped to 250 → 2 $GOLD
+  assert.equal(first.gold, 200, 'only whole multiples of the rate are spent');
+  assert.equal(first.amount, 2);
+  assert.equal(first.rate, 100);
+  assert.equal(first.dailyRemaining, 50);
+  assert.equal(first.pending, 2, 'credited as pending reward');
+  assert.equal(rewards.totals('u1').pending, 2);
+
+  assert.throws(() => rewards.convertGold('u1', 500), /at least 100/, 'daily cap blocks further conversion');
+  assert.throws(() => rewards.convertGold('u1', -5), /positive/);
+
+  const disabled = new RewardService(store, { ...convertSettings, goldConvertDailyGold: 0 }, undefined, undefined);
+  assert.throws(() => disabled.convertGold('u1', 100), /disabled/);
+  store.close();
+});
+
+test('room tickets round-trip and reject tampering/expiry', () => {
+  const secret = 'ticket-test-secret';
+  const ticket = signRoomTicket(secret, 'u1', 'alice', 60_000, 1000);
+  const ok = verifyRoomTicket(secret, ticket, 2000);
+  assert.equal(ok?.u, 'u1');
+  assert.equal(ok?.n, 'alice');
+
+  assert.equal(verifyRoomTicket(secret, ticket, 1000 + 61_000), null, 'expired tickets rejected');
+  assert.equal(verifyRoomTicket('other-secret', ticket, 2000), null, 'wrong secret rejected');
+  assert.equal(verifyRoomTicket(secret, 'garbage', 2000), null, 'garbage rejected');
+  assert.equal(verifyRoomTicket(secret, '', 2000), null, 'empty rejected');
+
+  const signature = ticket.slice(ticket.lastIndexOf('.') + 1);
+  const forgedBody = Buffer.from(JSON.stringify({ u: 'admin', n: 'x', exp: 9e15 })).toString('base64url');
+  assert.equal(verifyRoomTicket(secret, `${forgedBody}.${signature}`, 2000), null, 'forged payload rejected');
+});
+
+test('internal match intake verifies HMAC signatures and records the match', async () => {
+  const tmp = path.join(os.tmpdir(), `fishio-intake-${Date.now()}.db`);
+  const app = buildServer(
+    loadConfig({ FISHIO_DB_PATH: tmp, INTERNAL_HMAC_SECRET: 'intake-secret', NODE_ENV: 'test' }),
+  );
+  try {
+    const reg = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email: 'intake@example.com', username: 'intake1', password: 'CheckPass123' },
+    });
+    assert.equal(reg.statusCode, 201);
+    const userId = (reg.json() as { user: { id: string } }).user.id;
+
+    const body = JSON.stringify({
+      userId,
+      stats: { mode: 'classic', score: 1500, kills: 5, level: 4, durationMs: 90_000 },
+    });
+
+    const intakeHeaders = (signature: string) => ({
+      'content-type': 'application/vnd.fishio.intake+json',
+      'x-fishio-signature': signature,
+    });
+
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/internal/matches',
+      payload: body,
+      headers: intakeHeaders('nope'),
+    });
+    assert.equal(bad.statusCode, 401, 'unsigned results are rejected');
+
+    const good = await app.inject({
+      method: 'POST',
+      url: '/internal/matches',
+      payload: body,
+      headers: intakeHeaders(signInternalBody('intake-secret', body)),
+    });
+    assert.equal(good.statusCode, 201);
+    const data = good.json() as {
+      user: { id: string };
+      mode: string;
+      reward: { amount: number };
+      receipt: { status: string };
+    };
+    assert.equal(data.user.id, userId);
+    assert.equal(data.mode, 'classic');
+    assert.ok(data.reward.amount > 0, 'reward recorded from server-authored stats');
+    assert.equal(typeof data.receipt.status, 'string');
+
+    const lb = await app.inject({ method: 'GET', url: '/api/v1/leaderboard' });
+    assert.equal(lb.statusCode, 200);
+    const entries = (lb.json() as { entries: Array<{ username: string }> }).entries;
+    assert.ok(entries.some((entry) => entry.username === 'intake1'), 'leaderboard reflects the online match');
+
+    const unknown = JSON.stringify({ userId: 'nope', stats: { mode: 'classic' } });
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/internal/matches',
+      payload: unknown,
+      headers: intakeHeaders(signInternalBody('intake-secret', unknown)),
+    });
+    assert.equal(missing.statusCode, 404, 'unknown accounts are rejected');
+  } finally {
+    await app.close();
+    fs.rmSync(tmp, { force: true });
+  }
 });

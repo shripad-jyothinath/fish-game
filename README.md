@@ -108,6 +108,18 @@ account to every device. Endpoints: `GET /api/v1/hedera/shop`,
 `POST /api/v1/hedera/shop/purchase`, `GET /api/v1/me/entitlements`. Verified live:
 match → HCS #2 → claim 28 `$GOLD` → buy Ninja Katana (2 `$GOLD`) → wallet debited 28→26.
 
+**Gold ↔ `$GOLD`:** the account panel also converts in-game 💰 into pending `$GOLD`
+(`POST /api/v1/hedera/gold/convert`, default 100 💰 = 1 `$GOLD`, 20k 💰/day cap), and
+converted amounts flow through the same claim pipeline. The reverse direction already
+exists via match rewards and the shop.
+
+**M4 — online matches count:** signed-in players get a short-lived signed **room ticket**
+(`POST /api/v1/hedera/room-ticket`) that travels in the arena `hello`. When they die, the
+room server posts the server-authored result to `POST /internal/matches`
+(HMAC-signed with `INTERNAL_HMAC_SECRET`) — the same HCS attestation + pending `$GOLD`
+pipeline as offline play, and the game-over screen shows the HashScan receipt via a
+`match_receipt` follow-up. Guests play normally with no ticket.
+
 `npm run hedera:setup -- --demo-account` also creates a funded throwaway account
 and sends it `$GOLD` + an NFT as an end-to-end proof. Everything is reversible:
 delete the ID lines from `.env` to return to offline mode.
