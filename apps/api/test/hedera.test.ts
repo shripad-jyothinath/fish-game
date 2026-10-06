@@ -15,6 +15,7 @@ import { openDatabase, type NftItemRow } from '../src/db.ts';
 import { loadDotEnv } from '../src/env.ts';
 import { decodeMemo, MirrorClient } from '../src/hedera/mirror.ts';
 import { calculateGoldReward } from '../src/hedera/rewards.ts';
+import { findGoldShopItem, goldPriceFor, goldShop } from '../src/hedera/shop.ts';
 import { isValidHederaAccountId, stripChecksum, verifyMessageSignature, WalletService } from '../src/hedera/wallet.ts';
 
 const settings: HederaSettings = {
@@ -215,5 +216,66 @@ test('limited editions reserve atomically and free slots on failure', () => {
 
   assert.equal(store.reserveNftMint(mintRow('r5', 'u1', 'coral_dagger'), null), 'reserved', 'unlimited items have no cap');
   assert.equal(store.reserveNftMint(mintRow('r6', 'u2', 'coral_dagger'), null), 'reserved');
+  store.close();
+});
+
+test('$GOLD shop prices compress gold costs into bands', () => {
+  assert.equal(goldPriceFor(0), null, 'free items are not for sale');
+  assert.equal(goldPriceFor(500), 2);
+  assert.equal(goldPriceFor(1_000), 5);
+  assert.equal(goldPriceFor(7_000), 12);
+  assert.equal(goldPriceFor(30_000), 30);
+  assert.equal(goldPriceFor(250_000), 80);
+  assert.equal(goldPriceFor(8_000_000), 200);
+
+  const { items } = goldShop();
+  assert.ok(items.length > 30, `catalog has sellable items (${items.length})`);
+  for (const item of items) {
+    assert.ok(item.priceGold >= 2 && item.priceGold <= 200, `${item.type}:${item.id} in price range`);
+    assert.ok(item.costGold > 0, `${item.type}:${item.id} has a real gold cost`);
+  }
+
+  const weapon = items.find((item) => item.type === 'weapon');
+  assert.ok(weapon, 'weapons are sellable');
+  assert.deepEqual(findGoldShopItem(weapon.type, weapon.id), weapon, 'lookup by type+id');
+  assert.equal(findGoldShopItem('weapon', 'definitely_not_real'), null);
+  assert.equal(findGoldShopItem('fish', 'baby_shark'), null, 'default fish is not for sale');
+});
+
+test('entitlements reserve atomically, activate, and free slots on delete', () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+
+  const row = {
+    id: 'e1',
+    user_id: 'u1',
+    item_type: 'weapon',
+    item_id: 'excalibur',
+    source: 'gold_purchase',
+    status: 'pending',
+    price_gold: 80,
+    hedera_tx_id: null,
+    created_at: 10,
+  };
+  store.insertEntitlement(row);
+  assert.equal(store.findEntitlement('u1', 'weapon', 'excalibur')?.status, 'pending');
+  assert.throws(() => store.insertEntitlement({ ...row, id: 'e2' }), 'unique user+item reservation');
+
+  store.activateEntitlement('e1', '0.0.123@1.2');
+  const active = store.findEntitlement('u1', 'weapon', 'excalibur');
+  assert.equal(active?.status, 'active');
+  assert.equal(active?.hedera_tx_id, '0.0.123@1.2');
+  assert.equal(store.listEntitlements('u1').length, 1);
+
+  store.deleteEntitlement('e1');
+  assert.equal(store.findEntitlement('u1', 'weapon', 'excalibur'), undefined);
   store.close();
 });

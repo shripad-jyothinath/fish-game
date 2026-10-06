@@ -249,6 +249,11 @@
                     <button class="modal-close" onclick="closeShop()">&times;</button>
                 </div>
 
+                <div class="shop-chain-bar">
+                    <span id="shopGoldChain">⛓ $GOLD — sign in to use</span>
+                    <span class="shop-chain-hint">on-chain unlocks work on every device</span>
+                </div>
+
                 <div class="shop-tabs">
                     <button class="shop-tab active" id="tabFish" onclick="switchShopTab('fish')">🐟 Fish Species (16)</button>
                     <button class="shop-tab" id="tabWeapons" onclick="switchShopTab('weapons')">🗡️ Weapons (14)</button>
@@ -959,6 +964,7 @@
             document.getElementById('shopModal').classList.remove('hidden');
             switchShopTab(tab);
             updateMenuStats();
+            if (window.fishGoldShop) window.fishGoldShop.refresh();
         }
 
         function closeShop() {
@@ -1070,7 +1076,7 @@
                             ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
                             : isUnlocked 
                                 ? `<button class="item-btn btn-equip" onclick="equipFish('${item.id}')">EQUIP</button>`
-                                : `<button class="item-btn btn-buy" onclick="buyFish('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`
+                                : `<button class="item-btn btn-buy" onclick="buyFish('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>${goldButton('fish', item.id)}`
                         }
                     `;
                     container.appendChild(card);
@@ -1095,7 +1101,7 @@
                             ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
                             : isUnlocked 
                                 ? `<button class="item-btn btn-equip" onclick="equipWeapon('${item.id}')">EQUIP</button>`
-                                : `<button class="item-btn btn-buy" onclick="buyWeapon('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`
+                                : `<button class="item-btn btn-buy" onclick="buyWeapon('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>${goldButton('weapon', item.id)}`
                         }
                     `;
                     container.appendChild(card);
@@ -1120,7 +1126,7 @@
                             ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
                             : isUnlocked 
                                 ? `<button class="item-btn btn-equip" onclick="equipHat('${item.id}')">EQUIP</button>`
-                                : `<button class="item-btn btn-buy" onclick="buyHat('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`
+                                : `<button class="item-btn btn-buy" onclick="buyHat('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>${goldButton('hat', item.id)}`
                         }
                     `;
                     container.appendChild(card);
@@ -1168,6 +1174,46 @@
                 window.soundEngine.playLevelUp();
             } else {
                 alert("Not enough gold! Complete stage challenges or spin the wheel to earn more.");
+            }
+        }
+
+        // ---- $GOLD shop (on-chain cosmetics) ----
+        function goldButton(type, id) {
+            const shop = window.fishGoldShop;
+            if (!shop || !shop.enabled()) return '';
+            const price = shop.priceFor(type, id);
+            if (price == null) return '';
+            return `<button class="item-btn btn-gold-buy" onclick="buyWithGold('${type}','${id}')">⛓ BUY (${price} $GOLD)</button>`;
+        }
+
+        async function buyWithGold(type, id) {
+            const shop = window.fishGoldShop;
+            if (!shop) return;
+            const price = shop.priceFor(type, id);
+            const catalog = type === 'fish' ? window.FISH_SKINS : type === 'weapon' ? window.WEAPON_SKINS : window.FISH_HATS;
+            const name = (catalog && catalog[id] && catalog[id].name) || id;
+            if (!window.confirm(`Buy ${name} for ${price} $GOLD?\n\nThe token is transferred from your in-game Hedera wallet and the item unlocks on every device.`)) return;
+            try {
+                const result = await shop.purchase(type, id);
+                renderShopItems();
+                updateMenuStats();
+                updatePreviewFish();
+                if (window.soundEngine) window.soundEngine.playLevelUp();
+                const tx = result && result.receipt ? result.receipt.transactionId : '';
+                if (window.fishToast) window.fishToast(`⛓ ${name} unlocked! Tx ${String(tx).slice(0, 16)}…`);
+            } catch (err) {
+                const code = err && err.code;
+                if (code === 'insufficient_gold') {
+                    alert('Not enough $GOLD in your wallet.\n\nOpen the account panel and claim your pending match rewards first.');
+                } else if (code === 'already_owned') {
+                    renderShopItems();
+                } else if (code === 'external_wallet') {
+                    alert('Purchases with $GOLD currently use your in-game wallet. Unlink your external wallet to use it.');
+                } else if (code === 'purchase_in_progress') {
+                    alert('A purchase is already being processed — give it a few seconds.');
+                } else {
+                    alert(`Purchase failed: ${(err && err.message) || 'try again'}`);
+                }
             }
         }
 

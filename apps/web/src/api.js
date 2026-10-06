@@ -266,6 +266,7 @@
             renderAccountBar();
             if (passwordEl) passwordEl.value = '';
             await pullSave();
+            await refreshGoldShop();
             showToast(`Welcome, ${currentUser.username}!`);
         } catch (err) {
             showAuthError(err.message);
@@ -283,6 +284,7 @@
         linkChallenge = null;
         renderAccountBar();
         renderHederaPanel();
+        void refreshGoldShop();
         showToast('Signed out — progress stays on this device');
     }
 
@@ -630,6 +632,85 @@
         showToast._timer = setTimeout(() => el.classList.remove('show'), 3200);
     }
 
+    // ===== $GOLD shop (on-chain cosmetics) =====
+    let goldShop = null;   // server catalog: { online, items: [{type,id,name,costGold,priceGold}] }
+    let goldWallet = null; // last /hedera/gold snapshot (balance/pending)
+
+    function entitlementsList() {
+        const sm = window.shopManager;
+        return {
+            fish: sm && sm.unlockedFish,
+            weapon: sm && sm.unlockedWeapons,
+            hat: sm && sm.unlockedHats,
+        };
+    }
+
+    function applyEntitlements(payload) {
+        if (!payload || !Array.isArray(payload.items)) return false;
+        const lists = entitlementsList();
+        let changed = false;
+        for (const ent of payload.items) {
+            const list = lists[ent.type];
+            if (Array.isArray(list) && !list.includes(ent.id)) {
+                list.push(ent.id);
+                changed = true;
+            }
+        }
+        if (changed) {
+            const sm = window.shopManager;
+            if (sm && typeof sm.save === 'function') sm.save();
+            if (typeof updateMenuStats === 'function') updateMenuStats();
+        }
+        return changed;
+    }
+
+    function renderGoldShopChrome() {
+        const el = document.getElementById('shopGoldChain');
+        if (!el) return;
+        if (!currentUser) {
+            el.textContent = '⛓ $GOLD: sign in to use';
+            el.classList.add('muted');
+            return;
+        }
+        el.classList.remove('muted');
+        const balance = goldWallet && typeof goldWallet.balance === 'number' ? goldWallet.balance : null;
+        const pending = goldWallet ? Math.round(goldWallet.pending || 0) : 0;
+        el.textContent = `⛓ ${balance == null ? '—' : balance} $GOLD${pending > 0 ? ` · ${pending} pending` : ''}`;
+    }
+
+    async function refreshGoldShop() {
+        if (currentUser) {
+            const [shop, wallet, ents] = await Promise.all([
+                request('/api/v1/hedera/shop').catch(() => null),
+                request('/api/v1/hedera/gold').catch(() => null),
+                request('/api/v1/me/entitlements').catch(() => null),
+            ]);
+            goldShop = shop;
+            goldWallet = wallet;
+            applyEntitlements(ents);
+        } else {
+            goldShop = null;
+            goldWallet = null;
+        }
+        renderGoldShopChrome();
+        if (typeof renderShopItems === 'function') {
+            try { renderShopItems(); } catch { /* shop not open */ }
+        }
+    }
+
+    function goldPriceFor(type, id) {
+        if (!goldShop || !Array.isArray(goldShop.items)) return null;
+        const item = goldShop.items.find((entry) => entry.type === type && entry.id === id);
+        return item ? item.priceGold : null;
+    }
+
+    async function purchaseWithGold(type, id) {
+        const result = await request('/api/v1/hedera/shop/purchase', { method: 'POST', body: { type, id } });
+        if (result && result.entitlement) applyEntitlements({ items: [result.entitlement] });
+        await refreshGoldShop();
+        return result;
+    }
+
     // ===== boot =====
     function init() {
         hookShopSave();
@@ -639,6 +720,7 @@
                 if (user) {
                     try { await pullSave(); } catch { /* keep playing offline */ }
                 }
+                try { await refreshGoldShop(); } catch { /* shop unavailable */ }
             })
             .catch(() => { /* API down: play as guest */ });
     }
@@ -665,6 +747,14 @@
     window.fishExportWallet = fishExportWallet;
     window.fishClaimGold = fishClaimGold;
     window.fishMintItem = fishMintItem;
+    window.fishGoldShop = {
+        refresh: refreshGoldShop,
+        priceFor: goldPriceFor,
+        purchase: purchaseWithGold,
+        balance: () => (goldWallet ? goldWallet.balance : null),
+        pending: () => (goldWallet ? goldWallet.pending : null),
+        enabled: () => Boolean(currentUser && goldShop && goldShop.online),
+    };
     window.fishAuth = {
         get user() { return currentUser; },
         refreshSession,

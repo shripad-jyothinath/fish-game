@@ -3,7 +3,7 @@
  * token transfers (with airdrop fallback so recipients don't need to
  * pre-associate unless the network rejects airdrops).
  */
-import { TokenAirdropTransaction, TokenCreateTransaction, TokenSupplyType, TransferTransaction } from '@hiero-ledger/sdk';
+import { PrivateKey, TokenAirdropTransaction, TokenCreateTransaction, TokenSupplyType, TransferTransaction } from '@hiero-ledger/sdk';
 import type { Store } from '../db.ts';
 import type { HederaClient } from './client.ts';
 import { wholeToBaseUnits } from './client.ts';
@@ -69,5 +69,27 @@ export class TokenService {
         .execute(this.hedera.client);
       return { transactionId: tx.transactionId.toString(), method: 'transfer' };
     }
+  }
+
+  /**
+   * Move $GOLD FROM a custodial wallet TO the operator treasury (shop purchase).
+   * The caller must have verified ownership of `fromKeyDer`. Waits for the
+   * receipt so the purchase is only granted once the transfer really landed.
+   */
+  async transferGoldToTreasury(fromAccountId: string, fromKeyDer: string, amount: number): Promise<TokenPayment> {
+    if (!Number.isFinite(amount) || amount <= 0) throw new Error('Transfer amount must be positive');
+    const tokenId = await this.ensureGoldToken();
+    const base = Number(wholeToBaseUnits(amount, this.settings.goldDecimals));
+    const signerKey = PrivateKey.fromStringDer(fromKeyDer);
+
+    const tx = new TransferTransaction()
+      .addTokenTransfer(tokenId, fromAccountId, -base)
+      .addTokenTransfer(tokenId, this.hedera.operatorId, base)
+      .setTransactionMemo('Fish.IO shop purchase');
+    const frozen = await tx.freezeWith(this.hedera.client);
+    await frozen.sign(signerKey);
+    const response = await frozen.execute(this.hedera.client);
+    await response.getReceipt(this.hedera.client);
+    return { transactionId: response.transactionId.toString(), method: 'transfer' };
   }
 }

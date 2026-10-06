@@ -141,6 +141,18 @@ export interface PlayerStatsDelta {
   kingTime: number;
 }
 
+export interface EntitlementRow {
+  id: string;
+  user_id: string;
+  item_type: string;
+  item_id: string;
+  source: string;
+  status: string; // pending (purchase in flight) | active
+  price_gold: number;
+  hedera_tx_id: string | null;
+  created_at: number;
+}
+
 export type Store = ReturnType<typeof openDatabase>;
 
 export function openDatabase(dbPath: string) {
@@ -270,6 +282,19 @@ export function openDatabase(dbPath: string) {
          metadata_json = COALESCE(@metadata_json, metadata_json)
        WHERE id = @id`,
     ),
+
+    insertEntitlement: db.prepare(
+      `INSERT INTO entitlements (id, user_id, item_type, item_id, source, status, price_gold, hedera_tx_id, created_at)
+       VALUES (@id, @user_id, @item_type, @item_id, @source, @status, @price_gold, @hedera_tx_id, @created_at)`,
+    ),
+    entitlementByUserItem: db.prepare(
+      `SELECT * FROM entitlements WHERE user_id = ? AND item_type = ? AND item_id = ?`,
+    ),
+    entitlementsByUser: db.prepare(`SELECT * FROM entitlements WHERE user_id = ? ORDER BY created_at ASC`),
+    activateEntitlementStmt: db.prepare(
+      `UPDATE entitlements SET status = 'active', hedera_tx_id = COALESCE(?, hedera_tx_id) WHERE id = ?`,
+    ),
+    deleteEntitlementStmt: db.prepare(`DELETE FROM entitlements WHERE id = ?`),
   };
 
   return {
@@ -462,6 +487,23 @@ export function openDatabase(dbPath: string) {
     },
     mintCounts(): Array<{ item_id: string; n: number }> {
       return stmts.mintCounts.all() as Array<{ item_id: string; n: number }>;
+    },
+
+    // ------------------------------------------------------------ entitlements
+    insertEntitlement(row: EntitlementRow): void {
+      stmts.insertEntitlement.run(row);
+    },
+    findEntitlement(userId: string, itemType: string, itemId: string): EntitlementRow | undefined {
+      return stmts.entitlementByUserItem.get(userId, itemType, itemId) as EntitlementRow | undefined;
+    },
+    listEntitlements(userId: string): EntitlementRow[] {
+      return stmts.entitlementsByUser.all(userId) as EntitlementRow[];
+    },
+    activateEntitlement(id: string, txId: string | null): void {
+      stmts.activateEntitlementStmt.run(txId, id);
+    },
+    deleteEntitlement(id: string): void {
+      stmts.deleteEntitlementStmt.run(id);
     },
 
     close(): void {

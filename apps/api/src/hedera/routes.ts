@@ -8,8 +8,11 @@
  *   POST /api/v1/hedera/link/challenge  start wallet linking (auth)
  *   POST /api/v1/hedera/link/verify     finish wallet linking (auth)
  *   DEL  /api/v1/hedera/link            unlink wallet (auth)
- *   GET  /api/v1/hedera/gold            $GOLD totals (auth)
+ *   GET  /api/v1/hedera/gold            $GOLD totals + wallet balance (auth)
  *   POST /api/v1/hedera/gold/claim      pay out pending $GOLD (auth)
+ *   GET  /api/v1/hedera/shop            $GOLD shop catalog + prices (public)
+ *   POST /api/v1/hedera/shop/purchase   buy a cosmetic with $GOLD (auth)
+ *   GET  /api/v1/me/entitlements        server-side owned items (auth)
  *   GET  /api/v1/hedera/nfts            owned NFTs (auth)
  *   POST /api/v1/hedera/nfts/mint       mint an owned cosmetic (auth)
  *   GET  /api/v1/hedera/nft/metadata/:itemId   HIP-412 metadata (public)
@@ -19,14 +22,19 @@ import type { FastifyInstance, FastifyReply } from 'fastify';
 import { randomUUID } from 'node:crypto';
 import type { AuthGuard } from '../auth.ts';
 import { verifyPassword } from '../auth.ts';
-import type { NftItemRow, Store } from '../db.ts';
+import type { EntitlementRow, NftItemRow, Store } from '../db.ts';
+import { wholeToBaseUnits } from './client.ts';
 import { hashscanNftUrl, hashscanTxUrl } from './config.ts';
 import type { MatchStats } from './rewards.ts';
 import type { HederaServices } from './services.ts';
+import { findGoldShopItem, goldShop } from './shop.ts';
 import { WalletLinkError } from './wallet.ts';
 
 const ITEM_TYPES = ['fish', 'weapon', 'hat'] as const;
 type ItemType = (typeof ITEM_TYPES)[number];
+
+/** Serializes $GOLD purchases per user (balance checks race otherwise). */
+const purchasesInFlight = new Set<string>();
 
 const SAVE_LISTS: Record<ItemType, string> = {
   fish: 'unlockedFish',
@@ -53,6 +61,8 @@ function clampText(value: unknown, maxLength: number): string {
 }
 
 function ownsItem(store: Store, userId: string, itemType: ItemType, itemId: string): boolean {
+  const entitlement = store.findEntitlement(userId, itemType, itemId);
+  if (entitlement?.status === 'active') return true;
   const save = store.getSave(userId);
   if (!save) return false;
   try {
@@ -296,10 +306,22 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
     if (!user) return reply.code(401).send(errorBody('unauthorized', 'Sign in required.'));
     const totals = services.rewards.totals(user.id);
     const link = services.wallet.getLink(user.id);
+    const custodial = services.custody?.getWallet(user.id) ?? null;
+    const walletAccountId = link?.accountId ?? custodial?.accountId ?? null;
+    const tokenId = settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')?.resource_id || null;
+    let balance: number | null = null;
+    if (services.online && walletAccountId && tokenId) {
+      try {
+        const base = await services.mirror.tokenBalance(walletAccountId, tokenId);
+        balance = Math.floor((base / 10 ** settings.goldDecimals) * 100) / 100;
+      } catch {
+        balance = null; // mirror hiccup: the rest of the response is still useful
+      }
+    }
     return {
       enabled: services.online,
       network: settings.network,
-      tokenId: settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')?.resource_id || null,
+      tokenId,
       symbol: settings.goldSymbol,
       decimals: settings.goldDecimals,
       pending: totals.pending,
@@ -307,6 +329,8 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
       totalEarned: totals.totalEarned,
       linked: Boolean(link),
       accountId: link?.accountId ?? null,
+      walletAccountId,
+      balance,
     };
   });
 
@@ -328,6 +352,157 @@ export function registerHederaRoutes(app: FastifyInstance, store: Store, service
       }
       app.log.error({ err }, 'gold claim failed');
       return reply.code(502).send(errorBody('payout_failed', 'On-chain payout failed. Your $GOLD stays pending; try again.'));
+    }
+  });
+
+  // ------------------------------------------------------- $GOLD shop (cosmetics)
+  app.get('/api/v1/hedera/shop', async () => {
+    const { items } = goldShop();
+    return {
+      network: settings.network,
+      online: services.online,
+      symbol: settings.goldSymbol,
+      decimals: settings.goldDecimals,
+      items: items.map((item) => ({
+        type: item.type,
+        id: item.id,
+        name: item.name,
+        costGold: item.costGold,
+        priceGold: item.priceGold,
+      })),
+    };
+  });
+
+  app.get('/api/v1/me/entitlements', { preHandler: requireUser }, async (req, reply) => {
+    const user = req.user;
+    if (!user) return reply.code(401).send(errorBody('unauthorized', 'Sign in required.'));
+    return {
+      items: store
+        .listEntitlements(user.id)
+        .filter((row) => row.status === 'active')
+        .map((row) => ({
+          type: row.item_type,
+          id: row.item_id,
+          source: row.source,
+          paidGold: row.price_gold,
+          txId: row.hedera_tx_id,
+          createdAt: row.created_at,
+        })),
+    };
+  });
+
+  app.post('/api/v1/hedera/shop/purchase', { preHandler: requireUser }, async (req, reply) => {
+    const user = req.user;
+    if (!user) return reply.code(401).send(errorBody('unauthorized', 'Sign in required.'));
+    if (!services.online || !services.token || !services.custody) {
+      return reply.code(503).send(errorBody('hedera_disabled', 'Hedera is not configured on this server yet.'));
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const item = findGoldShopItem(body.type, body.id);
+    if (!item) return reply.code(404).send(errorBody('invalid_item', 'That item is not sold for $GOLD.'));
+
+    if (store.findEntitlement(user.id, item.type, item.id)) {
+      return reply.code(409).send(errorBody('already_owned', 'You already own this item.'));
+    }
+    if (store.getWalletLink(user.id)) {
+      return reply
+        .code(409)
+        .send(
+          errorBody(
+            'external_wallet',
+            'Purchases with $GOLD currently use your in-game wallet. Unlink your external wallet to use it.',
+          ),
+        );
+    }
+    if (purchasesInFlight.has(user.id)) {
+      return reply.code(429).send(errorBody('purchase_in_progress', 'A purchase is already being processed.'));
+    }
+    purchasesInFlight.add(user.id);
+
+    try {
+      const wallet = await services.custody.ensureWallet(user.id);
+      if (!wallet) {
+        return reply.code(503).send(errorBody('wallet_unavailable', 'Your wallet is not ready yet. Try again in a moment.'));
+      }
+      const exported = services.custody.exportKey(user.id);
+      const tokenId =
+        settings.goldTokenId || store.getHederaResource(settings.network, 'gold_token')?.resource_id || null;
+      if (!exported || !tokenId) {
+        return reply.code(503).send(errorBody('hedera_disabled', 'The $GOLD token is not ready on this server yet.'));
+      }
+
+      const factor = 10 ** settings.goldDecimals;
+      const balanceBase = await services.mirror.tokenBalance(wallet.accountId, tokenId);
+      if (balanceBase < item.priceGold * factor) {
+        const totals = services.rewards.totals(user.id);
+        return reply.code(402).send({
+          error: {
+            code: 'insufficient_gold',
+            message: 'Not enough $GOLD in your wallet. Claim pending rewards first.',
+          },
+          balance: Math.floor(balanceBase / factor),
+          priceGold: item.priceGold,
+          pending: Math.round(totals.pending),
+          walletAccountId: wallet.accountId,
+        });
+      }
+
+      // Reserve first (unique per user+item) so concurrent taps and double
+      // spends can only ever charge once.
+      const reservation: EntitlementRow = {
+        id: randomUUID(),
+        user_id: user.id,
+        item_type: item.type,
+        item_id: item.id,
+        source: 'gold_purchase',
+        status: 'pending',
+        price_gold: item.priceGold,
+        hedera_tx_id: null,
+        created_at: Date.now(),
+      };
+      try {
+        store.insertEntitlement(reservation);
+      } catch {
+        return reply.code(409).send(errorBody('already_owned', 'You already own this item.'));
+      }
+
+      let payment;
+      try {
+        payment = await services.token.transferGoldToTreasury(wallet.accountId, exported.privateKeyDer, item.priceGold);
+      } catch (err) {
+        store.deleteEntitlement(reservation.id); // nothing charged
+        app.log.error({ err }, 'gold shop transfer failed');
+        return reply
+          .code(502)
+          .send(errorBody('transfer_failed', 'On-chain transfer failed. Nothing was charged — try again.'));
+      }
+
+      try {
+        store.activateEntitlement(reservation.id, payment.transactionId);
+      } catch (err) {
+        // Transfer already landed; keep the pending row for support/retry.
+        app.log.error({ err, entitlementId: reservation.id }, 'paid but failed to activate entitlement');
+      }
+      return reply.code(201).send({
+        item,
+        entitlement: {
+          type: item.type,
+          id: item.id,
+          source: 'gold_purchase',
+          paidGold: item.priceGold,
+          txId: payment.transactionId,
+        },
+        receipt: {
+          transactionId: payment.transactionId,
+          hashscanUrl: hashscanTxUrl(settings, payment.transactionId),
+        },
+      });
+    } catch (err) {
+      app.log.warn({ err }, 'gold shop purchase failed');
+      return reply.code(502).send(errorBody('mirror_unavailable', 'Could not check your $GOLD balance. Try again.'));
+    } finally {
+      purchasesInFlight.delete(user.id);
     }
   });
 

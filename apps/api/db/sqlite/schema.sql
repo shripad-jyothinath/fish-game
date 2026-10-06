@@ -139,3 +139,19 @@ CREATE TABLE IF NOT EXISTS player_stats (
     total_king_time INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL
 );
+
+-- Server-side item ownership. Source of truth for items granted by the API
+-- (currently: $GOLD shop purchases); the client merges these into its save.
+CREATE TABLE IF NOT EXISTS entitlements (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_type    TEXT NOT NULL,                      -- fish | weapon | hat
+    item_id      TEXT NOT NULL,
+    source       TEXT NOT NULL,                      -- gold_purchase | ...
+    status       TEXT NOT NULL DEFAULT 'pending',    -- pending | active
+    price_gold   INTEGER NOT NULL DEFAULT 0,         -- $GOLD paid (whole units)
+    hedera_tx_id TEXT,
+    created_at   INTEGER NOT NULL,
+    UNIQUE (user_id, item_type, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_entitlements_user ON entitlements (user_id);
