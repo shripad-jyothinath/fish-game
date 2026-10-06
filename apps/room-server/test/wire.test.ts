@@ -4,8 +4,12 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { WebSocket as NodeWebSocket } from 'ws';
 import { startServer } from '../src/index.ts';
 import type { RoomServerConfig } from '../src/config.ts';
+
+// Node 22+ exposes a global WebSocket; Node 20 needs the `ws` package.
+const WS: any = (globalThis as any).WebSocket ?? NodeWebSocket;
 
 function makeConfig(overrides: Partial<RoomServerConfig> = {}): RoomServerConfig {
   return {
@@ -24,7 +28,7 @@ function makeConfig(overrides: Partial<RoomServerConfig> = {}): RoomServerConfig
 
 function open(url: string): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WS(url);
     ws.addEventListener('open', () => resolve(ws));
     ws.addEventListener('error', () => reject(new Error(`failed to connect to ${url}`)));
   });
