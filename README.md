@@ -100,6 +100,14 @@ offline mode (matches are still recorded locally). To go live:
    link a wallet (`0.0.x` proof-of-ownership transfer) to claim `$GOLD` and mint
    owned cosmetics as NFTs.
 
+**$GOLD shop (testnet):** signed-in players can buy cosmetics directly with `$GOLD` —
+locked items in the Armory show a `⛓ BUY (n $GOLD)` button. Prices are server-side
+cost bands (2–200 `$GOLD`), the token moves from the player's in-game custodial wallet
+to the treasury, and the unlock is stored server-side (`entitlements`) so it follows the
+account to every device. Endpoints: `GET /api/v1/hedera/shop`,
+`POST /api/v1/hedera/shop/purchase`, `GET /api/v1/me/entitlements`. Verified live:
+match → HCS #2 → claim 28 `$GOLD` → buy Ninja Katana (2 `$GOLD`) → wallet debited 28→26.
+
 `npm run hedera:setup -- --demo-account` also creates a funded throwaway account
 and sends it `$GOLD` + an NFT as an end-to-end proof. Everything is reversible:
 delete the ID lines from `.env` to return to offline mode.

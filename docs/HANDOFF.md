@@ -58,6 +58,18 @@ may be in flight (npm install, sim run) — verify before assuming.
 > netcode bug during live testing: reconnect reset the client input `seq` while the server kept its
 > ack window → all inputs dropped after reconnect (regression test added). Not wired yet: accounts,
 > match persistence/Hedera (`/internal/matches` still 501), matchmaking/room director. **Next: M2.**
+>
+> **Update ($GOLD shop — live):** signed-in players can spend the on-chain `$GOLD` token on
+> cosmetics. Server price book in `apps/api/src/hedera/shop.ts` (cost bands 2–200 `$GOLD`, built
+> from the real game-core catalog), `entitlements` table = server-side ownership, and
+> `POST /api/v1/hedera/shop/purchase` reserves before transferring from the user's **custodial
+> wallet** to the treasury (receipt awaited; rolls back on failure; per-user lock + unique row so
+> double spends are impossible). Client (`api.js` → `window.fishGoldShop`, shop UI in
+> `index.html`) shows `⛓ BUY` buttons and merges entitlements into the save on every login.
+> External-linked wallets are rejected for now (needs WalletConnect signing). Live-verified E2E
+> on testnet: match → HCS #2 → claim 28 `$GOLD` → buy Ninja Katana (2) → wallet 28→26 → duplicate
+> purchase 409. Still open: gold→$GOLD direction (needs server-authoritative gold), item
+> ownership for `ownsItem` beyond the save blob, M4 online-arena results.
 
 ---
 
