@@ -946,7 +946,7 @@ class ShopManager {
         this.dailyLoginDay = 1;
         this.lastLoginTimestamp = 0;
         this.hasClaimedDailyToday = false;
-        this.freeWheelSpins = 1;
+        this.lastWheelSpinDay = '';
 
         this.loadSaveData();
         this.checkDailyReset();
@@ -957,11 +957,28 @@ class ShopManager {
         const oneDay = 24 * 60 * 60 * 1000;
         if (now - this.lastLoginTimestamp > oneDay) {
             this.hasClaimedDailyToday = false;
-            this.freeWheelSpins = Math.max(this.freeWheelSpins, 1);
             if (now - this.lastLoginTimestamp > 2 * oneDay) {
                 this.dailyLoginDay = 1;
             }
         }
+    }
+
+    /** Local YYYY-MM-DD key for daily limits. */
+    dayKey() {
+        const d = new Date();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${d.getFullYear()}-${month}-${day}`;
+    }
+
+    /** Lucky wheel: exactly one spin per calendar day, no extras. */
+    canSpinWheel() {
+        return this.lastWheelSpinDay !== this.dayKey();
+    }
+
+    markWheelSpin() {
+        this.lastWheelSpinDay = this.dayKey();
+        this.save();
     }
 
     loadSaveData() {
@@ -988,7 +1005,7 @@ class ShopManager {
             if (data.dailyLoginDay) this.dailyLoginDay = data.dailyLoginDay;
             if (data.lastLoginTimestamp) this.lastLoginTimestamp = data.lastLoginTimestamp;
             if (data.hasClaimedDailyToday !== undefined) this.hasClaimedDailyToday = data.hasClaimedDailyToday;
-            if (data.freeWheelSpins !== undefined) this.freeWheelSpins = data.freeWheelSpins;
+            if (data.lastWheelSpinDay) this.lastWheelSpinDay = data.lastWheelSpinDay;
 
             if (!this.unlockedFish.includes('baby_shark')) this.unlockedFish.push('baby_shark');
             if (!this.unlockedWeapons.includes('coral_dagger')) this.unlockedWeapons.push('coral_dagger');
@@ -1020,7 +1037,7 @@ class ShopManager {
                 dailyLoginDay: this.dailyLoginDay,
                 lastLoginTimestamp: this.lastLoginTimestamp,
                 hasClaimedDailyToday: this.hasClaimedDailyToday,
-                freeWheelSpins: this.freeWheelSpins,
+                lastWheelSpinDay: this.lastWheelSpinDay,
                 savedAt: Date.now()
             };
             localStorage.setItem('fishio_savedata_v4', JSON.stringify(data));

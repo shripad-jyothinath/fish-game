@@ -704,30 +704,27 @@
 
             const btn = document.getElementById('spinWheelBtn');
             const status = document.getElementById('wheelStatus');
-            const isFree = sm.freeWheelSpins > 0;
+            const canSpin = sm.canSpinWheel();
 
             if (btn && !isWheelSpinning) {
-                if (isFree) {
+                if (canSpin) {
                     btn.textContent = 'FREE DAILY SPIN 🌀';
                     btn.style.background = 'linear-gradient(135deg, #00cec9, #0984e3)';
                     btn.disabled = false;
                 } else {
-                    btn.textContent = 'SPIN (100 💰)';
-                    btn.style.background = 'linear-gradient(135deg, #ff9f43, #ee5253)';
-                    btn.disabled = sm.gold < 100;
+                    btn.textContent = 'ALREADY SPUN TODAY 🎡';
+                    btn.style.background = 'linear-gradient(135deg, #636e72, #2d3436)';
+                    btn.disabled = true;
                 }
             }
 
             if (status) {
-                if (isFree) {
-                    status.textContent = '✨ 1 Free Daily Spin Available!';
+                if (canSpin) {
+                    status.textContent = '✨ 1 Free Spin Available Today!';
                     status.style.color = '#00f7ff';
-                } else if (sm.gold >= 100) {
-                    status.textContent = '💎 100 Gold per additional spin';
-                    status.style.color = 'rgba(255,255,255,0.7)';
                 } else {
-                    status.textContent = '❌ Need 100 Gold to spin (Play matches to earn gold)';
-                    status.style.color = '#ff4757';
+                    status.textContent = '⏳ One spin per day — come back tomorrow!';
+                    status.style.color = 'rgba(255,255,255,0.7)';
                 }
             }
         }
@@ -792,16 +789,13 @@
         function spinWheel() {
             if (isWheelSpinning) return;
             const sm = window.shopManager;
-            const isFree = sm.freeWheelSpins > 0;
-            if (!isFree && sm.gold < 100) {
-                alert("You need 100 Gold for additional spins!");
+            if (!sm.canSpinWheel()) {
+                alert('One spin per day — you already used today\u2019s spin! 🎡 Come back tomorrow.');
                 return;
             }
 
-            if (isFree) sm.freeWheelSpins--;
-            else sm.gold -= 100;
-            sm.save();
-            updateMenuStats();
+            // Consume the spin up-front so refreshing mid-spin can't reroll it.
+            sm.markWheelSpin();
             updateWheelUI();
 
             isWheelSpinning = true;
