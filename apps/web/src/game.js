@@ -895,7 +895,7 @@ class GameEngine {
             this.soundEngine.playJackpot();
         }
 
-        this.notifyMatchBridge({ victory: true, source: 'stage' });
+        this.notifyMatchBridge({ victory: true, source: 'stage', stageLevel: this.currentChallengeLevel });
 
         document.getElementById('hudOverlay').classList.add('hidden');
         const modal = document.getElementById('stageClearModal');

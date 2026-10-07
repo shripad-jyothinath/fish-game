@@ -580,7 +580,7 @@
       this.lastReceipt = msg;
       const target = document.getElementById('hederaReceipt');
       const reward =
-        msg.reward && typeof msg.reward.amount === 'number' ? ` · +${msg.reward.amount} $GOLD pending` : '';
+        msg.reward && typeof msg.reward.amount === 'number' ? ` · +${msg.reward.amount} $GOLD credited` : '';
       if (target) {
         target.classList.remove('hidden');
         if (msg.receipt && msg.receipt.hashscanUrl) {

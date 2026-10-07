@@ -166,3 +166,36 @@ CREATE TABLE IF NOT EXISTS entitlements (
     UNIQUE (user_id, item_type, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_entitlements_user ON entitlements (user_id);
+
+-- Append-only $GOLD ledger: the authoritative in-game balance is SUM(delta).
+-- Credits: match_reward | stage_reward | daily_reward | wheel_reward | deposit | withdraw_failed
+-- Debits:  purchase | upgrade | withdraw
+CREATE TABLE IF NOT EXISTS gold_ledger (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    delta      INTEGER NOT NULL,
+    reason     TEXT NOT NULL,
+    ref        TEXT,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_gold_ledger_user ON gold_ledger (user_id, created_at);
+
+-- Server-tracked workshop upgrade levels ($GOLD economy).
+CREATE TABLE IF NOT EXISTS player_upgrades (
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    upgrade_id TEXT NOT NULL,
+    level      INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, upgrade_id)
+);
+
+-- One-claim-per-period rewards (daily login, lucky wheel, stage clears).
+CREATE TABLE IF NOT EXISTS reward_claims (
+    id         TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL,                        -- daily | wheel | stage
+    ref        TEXT NOT NULL,                        -- day key / stage number
+    amount     INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (user_id, kind, ref)
+);

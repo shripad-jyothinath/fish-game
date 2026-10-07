@@ -72,6 +72,7 @@
             else throw err;
         }
         renderAccountBar();
+        syncGoldMode();
         return currentUser;
     }
 
@@ -343,6 +344,17 @@
                 },
             });
             target.innerHTML = receiptFooter(payload);
+            if (stats.source === 'stage' && stats.stageLevel) {
+                try {
+                    const stageReward = await claimStageGold(stats.stageLevel);
+                    target.innerHTML += ` <span class="hedera-badge">+${stageReward.amount} $GOLD</span>`;
+                    showToast(`🏁 Stage ${stats.stageLevel} clear: +${stageReward.amount} $GOLD`);
+                } catch (rewardErr) {
+                    if (!(rewardErr && rewardErr.code === 'already_claimed')) {
+                        target.innerHTML += ' <span class="hedera-badge warn">stage reward delayed</span>';
+                    }
+                }
+            }
         } catch (err) {
             target.innerHTML = `<span class="hedera-badge warn">⛓ Hedera</span> could not record match (${escapeHtml(err.message)})`;
         }
@@ -391,32 +403,28 @@
         const network = status ? status.network : 'testnet';
         const online = Boolean(status && status.online);
         const statusLabel = online ? `${network} · live` : `${network} · not configured`;
-        const goldLine = gold
-            ? `<b>${gold.paid}</b> claimed · <b>${gold.pending}</b> pending`
-            : '—';
+        const bal = gold && typeof gold.balance === 'number' ? gold.balance : null;
+        const walletBal = gold && typeof gold.walletBalance === 'number' ? gold.walletBalance : null;
+        const earned = gold ? gold.earned || 0 : 0;
+        const withdrawn = gold ? gold.withdrawn || 0 : 0;
 
         let html = '';
         html += `<div class="hedera-head"><span class="hedera-badge">⛓ Hedera</span><span class="hedera-status ${online ? 'on' : 'off'}">${statusLabel}</span></div>`;
-        html += `<div class="hedera-row"><span>$GOLD tokens</span><span>${goldLine}</span></div>`;
+        html += `<div class="hedera-row"><span>$GOLD balance</span><span><b>${bal == null ? '—' : bal}</b> in-game${walletBal != null ? ` · <b>${walletBal}</b> wallet` : ''}</span></div>`;
+        html += `<div class="hedera-row"><span>All time</span><span>${earned} earned · ${withdrawn} withdrawn</span></div>`;
 
         if (online && gold && gold.enabled) {
-            const rate = gold.convertRate || 100;
-            const remaining = typeof gold.convertRemaining === 'number' ? gold.convertRemaining : null;
-            html += `<div class="hedera-row"><span>Convert in-game gold</span><span>${rate} 💰 = 1 $GOLD${remaining != null ? ` · ${remaining} 💰 left today` : ''}</span></div>`;
             html += `<div class="hedera-actions">
-                <input class="hedera-input" id="hederaConvertInput" type="number" min="${rate}" step="${rate}" placeholder="${rate * 5}">
-                <button class="hedera-btn primary" onclick="fishConvertGold()">Convert 💰 → $GOLD</button>
+                <button class="hedera-btn primary" onclick="fishWithdrawGold()" ${bal ? '' : 'disabled'}>Withdraw to wallet</button>
+                <button class="hedera-btn" onclick="fishDepositGold()">Deposit from wallet</button>
             </div>
-            <div class="hedera-muted">Gold is deducted in-game; the $GOLD lands in your pending rewards (claim to move it on-chain).</div>`;
+            <div class="hedera-muted">Earn $GOLD from matches, daily gifts and the wheel. Withdraw moves it on-chain; deposit brings it back in-game.</div>`;
         }
 
         if (link && link.linked) {
             const managed = link.link && link.link.method === 'custodial';
             html += `<div class="hedera-row"><span>Wallet</span><span class="hedera-account">${escapeHtml(link.link.accountId)}${managed ? ' · managed' : ''}</span></div>`;
             html += '<div class="hedera-actions">';
-            if (gold && gold.pending > 0) {
-                html += '<button class="hedera-btn primary" onclick="fishClaimGold()">Claim pending $GOLD</button>';
-            }
             if (managed && link.custodial && link.custodial.exportable) {
                 html += '<button class="hedera-btn" onclick="fishExportWallet()">Export key</button>';
             }
@@ -558,44 +566,7 @@
         }
     }
 
-    async function fishClaimGold() {
-        try {
-            const result = await request('/api/v1/hedera/gold/claim', { method: 'POST', body: {} });
-            const link = result.hashscanUrl ? ` — <a href="${escapeHtml(result.hashscanUrl)}" target="_blank" rel="noopener">view on HashScan</a>` : '';
-            showToast(`Claimed ${result.amount} $GOLD${result.method === 'airdrop' ? ' (airdrop)' : ''}`);
-            const panel = document.getElementById('hederaPanel');
-            if (panel) panel.insertAdjacentHTML('afterbegin', `<div class="hedera-claim-ok">🪙 ${result.amount} $GOLD sent${link}</div>`);
-            renderHederaPanel();
-        } catch (err) {
-            showToast(err.message);
-        }
-    }
-
-    async function fishConvertGold() {
-        const input = document.getElementById('hederaConvertInput');
-        const goldAmount = input ? Number(input.value) : 0;
-        if (!Number.isFinite(goldAmount) || goldAmount <= 0) {
-            showToast('Enter how much in-game gold to convert');
-            return;
-        }
-        const sm = window.shopManager;
-        if (!sm || sm.gold < goldAmount) {
-            showToast('Not enough in-game gold');
-            return;
-        }
-        try {
-            const result = await request('/api/v1/hedera/gold/convert', { method: 'POST', body: { gold: goldAmount } });
-            // Charge only what the server actually converted (whole rate multiples).
-            sm.gold = Math.max(0, sm.gold - result.gold);
-            if (typeof sm.save === 'function') sm.save();
-            if (typeof updateMenuStats === 'function') updateMenuStats();
-            showToast(`Converted ${result.gold} 💰 → +${result.amount} $GOLD pending`);
-            renderHederaPanel();
-            void refreshGoldShop();
-        } catch (err) {
-            showToast(err.message || 'Conversion failed');
-        }
-    }
+    // NOTE: withdraw/deposit live in the $GOLD economy section above.
 
     async function fishMintItem() {
         const select = document.getElementById('hederaMintSelect');
@@ -669,9 +640,10 @@
         showToast._timer = setTimeout(() => el.classList.remove('show'), 3200);
     }
 
-    // ===== $GOLD shop (on-chain cosmetics) =====
-    let goldShop = null;   // server catalog: { online, items: [{type,id,name,costGold,priceGold}] }
-    let goldWallet = null; // last /hedera/gold snapshot (balance/pending)
+    // ===== $GOLD economy (server-side ledger) =====
+    let goldShop = null;    // catalog: { online, items, upgrades, upgradePrices }
+    let goldWallet = null;  // /hedera/gold snapshot: { balance, walletBalance, earned, withdrawn, ... }
+    let goldLevels = null;  // server-owned workshop upgrade levels
 
     function entitlementsList() {
         const sm = window.shopManager;
@@ -696,39 +668,97 @@
         if (changed) {
             const sm = window.shopManager;
             if (sm && typeof sm.save === 'function') sm.save();
-            if (typeof updateMenuStats === 'function') updateMenuStats();
+            if (typeof window.updateMenuStats === 'function') window.updateMenuStats();
         }
         return changed;
+    }
+
+    function applyServerUpgrades(levels) {
+        const sm = window.shopManager;
+        if (!sm || !levels || typeof levels !== 'object') return false;
+        let changed = false;
+        for (const [id, level] of Object.entries(levels)) {
+            if ((sm.upgrades[id] || 0) < level) {
+                sm.upgrades[id] = level;
+                changed = true;
+            }
+        }
+        if (changed && typeof sm.save === 'function') sm.save();
+        return changed;
+    }
+
+    function goldBalance() {
+        return goldWallet && typeof goldWallet.balance === 'number' ? goldWallet.balance : null;
+    }
+
+    function goldMode() {
+        return Boolean(currentUser && goldShop && goldShop.online);
+    }
+
+    /** Menu/shop balances show $GOLD when signed in; practice 💰 for guests. */
+    function applyGoldLabels() {
+        if (!currentUser) return;
+        const bal = goldBalance();
+        const text = `⛓ ${bal == null ? '…' : bal} $GOLD`;
+        const menuEl = document.getElementById('menuGold');
+        const shopEl = document.getElementById('shopGoldDisplay');
+        if (menuEl) menuEl.textContent = text;
+        if (shopEl) shopEl.textContent = text;
+    }
+
+    function syncGoldMode() {
+        const sm = window.shopManager;
+        if (sm) sm.goldFrozen = Boolean(currentUser);
+        if (typeof window.updateMenuStats === 'function') window.updateMenuStats();
+        applyGoldLabels();
+    }
+
+    function patchMenuStats() {
+        if (typeof window.updateMenuStats !== 'function' || window.updateMenuStats.__fishPatched) return;
+        const original = window.updateMenuStats;
+        const wrapped = function () {
+            original.apply(this, arguments);
+            applyGoldLabels();
+        };
+        wrapped.__fishPatched = true;
+        window.updateMenuStats = wrapped;
     }
 
     function renderGoldShopChrome() {
         const el = document.getElementById('shopGoldChain');
         if (!el) return;
         if (!currentUser) {
-            el.textContent = '⛓ $GOLD: sign in to use';
+            el.textContent = '⛓ Sign in to earn and spend $GOLD';
             el.classList.add('muted');
+            applyGoldLabels();
             return;
         }
         el.classList.remove('muted');
-        const balance = goldWallet && typeof goldWallet.balance === 'number' ? goldWallet.balance : null;
-        const pending = goldWallet ? Math.round(goldWallet.pending || 0) : 0;
-        el.textContent = `⛓ ${balance == null ? '—' : balance} $GOLD${pending > 0 ? ` · ${pending} pending` : ''}`;
+        const bal = goldBalance();
+        const wallet = goldWallet && typeof goldWallet.walletBalance === 'number' ? goldWallet.walletBalance : null;
+        el.textContent = `⛓ ${bal == null ? '—' : bal} $GOLD${wallet ? ` · wallet ${wallet}` : ''}`;
+        applyGoldLabels();
     }
 
     async function refreshGoldShop() {
         if (currentUser) {
-            const [shop, wallet, ents] = await Promise.all([
+            const [shop, wallet, ents, levels] = await Promise.all([
                 request('/api/v1/hedera/shop').catch(() => null),
                 request('/api/v1/hedera/gold').catch(() => null),
                 request('/api/v1/me/entitlements').catch(() => null),
+                request('/api/v1/me/upgrades').catch(() => null),
             ]);
             goldShop = shop;
             goldWallet = wallet;
+            goldLevels = levels ? levels.levels : null;
             applyEntitlements(ents);
+            applyServerUpgrades(goldLevels);
         } else {
             goldShop = null;
             goldWallet = null;
+            goldLevels = null;
         }
+        syncGoldMode();
         renderGoldShopChrome();
         if (typeof renderShopItems === 'function') {
             try { renderShopItems(); } catch { /* shop not open */ }
@@ -741,6 +771,19 @@
         return item ? item.priceGold : null;
     }
 
+    /** Next-level $GOLD price for a workshop upgrade, or null when maxed. */
+    function goldUpgradeInfo(id, currentLevel) {
+        if (!goldShop || !Array.isArray(goldShop.upgrades) || !Array.isArray(goldShop.upgradePrices)) return null;
+        const def = goldShop.upgrades.find((entry) => entry.id === id);
+        if (!def) return null;
+        const level = Math.max(0, Number(currentLevel) || 0);
+        if (level >= def.maxLevel) return null;
+        const ladder = goldShop.upgradePrices;
+        const price =
+            level < ladder.length ? ladder[level] : ladder[ladder.length - 1] * Math.pow(2, level - ladder.length + 1);
+        return { price, level, maxLevel: def.maxLevel };
+    }
+
     async function purchaseWithGold(type, id) {
         const result = await request('/api/v1/hedera/shop/purchase', { method: 'POST', body: { type, id } });
         if (result && result.entitlement) applyEntitlements({ items: [result.entitlement] });
@@ -748,8 +791,84 @@
         return result;
     }
 
+    async function purchaseUpgradeWithGold(id) {
+        const result = await request('/api/v1/hedera/shop/upgrade', { method: 'POST', body: { id } });
+        const sm = window.shopManager;
+        if (sm && result && result.level) {
+            sm.upgrades[id] = result.level;
+            if (typeof sm.save === 'function') sm.save();
+        }
+        await refreshGoldShop();
+        return result;
+    }
+
+    async function claimDailyGold() {
+        const result = await request('/api/v1/me/reward/daily', { method: 'POST', body: {} });
+        await refreshGoldShop();
+        return result;
+    }
+
+    async function spinWheelGold() {
+        const result = await request('/api/v1/me/reward/wheel', { method: 'POST', body: {} });
+        await refreshGoldShop();
+        return result;
+    }
+
+    async function claimStageGold(level) {
+        const result = await request('/api/v1/me/reward/stage', { method: 'POST', body: { level } });
+        await refreshGoldShop();
+        return result;
+    }
+
+    async function fishWithdrawGold() {
+        const bal = goldBalance();
+        if (!bal) {
+            showToast('Nothing to withdraw yet');
+            return;
+        }
+        const answer = window.prompt(`Withdraw how much $GOLD to your wallet? (balance: ${bal})`, String(bal));
+        if (answer === null) return;
+        const amount = answer.trim() === '' || answer.trim().toLowerCase() === 'all' ? 'all' : Number(answer);
+        try {
+            showToast('Sending to your wallet…');
+            const result = await request('/api/v1/hedera/gold/withdraw', { method: 'POST', body: { amount } });
+            showToast(`Withdrew ${result.amount} $GOLD to your wallet`);
+            const panel = document.getElementById('hederaPanel');
+            if (panel && result.hashscanUrl) {
+                panel.insertAdjacentHTML(
+                    'afterbegin',
+                    `<div class="hedera-claim-ok">🪙 ${result.amount} $GOLD sent — <a href="${escapeHtml(result.hashscanUrl)}" target="_blank" rel="noopener">view on HashScan</a></div>`,
+                );
+            }
+            await refreshGoldShop();
+            renderHederaPanel();
+        } catch (err) {
+            showToast(err.message || 'Withdraw failed');
+        }
+    }
+
+    async function fishDepositGold() {
+        const answer = window.prompt('Deposit how much $GOLD from your wallet into the game?');
+        if (answer === null) return;
+        const amount = Math.floor(Number(answer));
+        if (!Number.isFinite(amount) || amount <= 0) {
+            showToast('Enter a positive amount');
+            return;
+        }
+        try {
+            showToast('Depositing…');
+            const result = await request('/api/v1/hedera/gold/deposit', { method: 'POST', body: { amount } });
+            showToast(`Deposited ${result.amount} $GOLD into your in-game balance`);
+            await refreshGoldShop();
+            renderHederaPanel();
+        } catch (err) {
+            showToast(err.message || 'Deposit failed');
+        }
+    }
+
     // ===== boot =====
     function init() {
+        patchMenuStats();
         hookShopSave();
         loadHederaStatus().catch(() => {});
         refreshSession()
@@ -782,8 +901,8 @@
     window.fishVerifyWallet = fishVerifyWallet;
     window.fishUnlinkWallet = fishUnlinkWallet;
     window.fishExportWallet = fishExportWallet;
-    window.fishClaimGold = fishClaimGold;
-    window.fishConvertGold = fishConvertGold;
+    window.fishWithdrawGold = fishWithdrawGold;
+    window.fishDepositGold = fishDepositGold;
     window.fishMintItem = fishMintItem;
     window.fishGetRoomTicket = async function fishGetRoomTicket() {
         try {
@@ -796,10 +915,15 @@
     window.fishGoldShop = {
         refresh: refreshGoldShop,
         priceFor: goldPriceFor,
+        upgradeInfo: goldUpgradeInfo,
         purchase: purchaseWithGold,
+        purchaseUpgrade: purchaseUpgradeWithGold,
+        claimDaily: claimDailyGold,
+        spinWheel: spinWheelGold,
+        claimStage: claimStageGold,
         balance: () => (goldWallet ? goldWallet.balance : null),
-        pending: () => (goldWallet ? goldWallet.pending : null),
-        enabled: () => Boolean(currentUser && goldShop && goldShop.online),
+        walletBalance: () => (goldWallet ? goldWallet.walletBalance : null),
+        enabled: goldMode,
     };
     window.fishAuth = {
         get user() { return currentUser; },

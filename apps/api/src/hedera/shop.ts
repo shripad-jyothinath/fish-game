@@ -98,3 +98,42 @@ export function findGoldShopItem(type: unknown, id: unknown): GoldShopItem | nul
   if (typeof type !== 'string' || typeof id !== 'string') return null;
   return goldShop().byKey.get(`${type}:${id}`) ?? null;
 }
+
+// ------------------------------------------------------------ workshop upgrades
+
+export interface UpgradeDef {
+  id: string;
+  name: string;
+  maxLevel: number;
+}
+
+let cachedUpgrades: Map<string, UpgradeDef> | null = null;
+
+/** Server-side workshop upgrade definitions (from the game catalog). */
+export function upgradeDefs(): Map<string, UpgradeDef> {
+  if (cachedUpgrades) return cachedUpgrades;
+  const catalog = loadGame().catalog();
+  const map = new Map<string, UpgradeDef>();
+  for (const [id, raw] of Object.entries(catalog.upgrades ?? {})) {
+    const entry = (raw ?? {}) as { name?: unknown; maxLevel?: unknown };
+    map.set(id, {
+      id,
+      name: String(entry.name ?? id),
+      maxLevel: Math.max(1, Math.floor(Number(entry.maxLevel ?? 5))),
+    });
+  }
+  cachedUpgrades = map;
+  return map;
+}
+
+/** Cost to go from `nextLevelIndex` (0-based) to the next upgrade level. */
+const UPGRADE_LADDER = [15, 30, 60, 120, 240];
+
+export function upgradePriceFor(nextLevelIndex: number): number {
+  if (nextLevelIndex < UPGRADE_LADDER.length) return UPGRADE_LADDER[nextLevelIndex]!;
+  return UPGRADE_LADDER[UPGRADE_LADDER.length - 1]! * 2 ** (nextLevelIndex - UPGRADE_LADDER.length + 1);
+}
+
+export function upgradePrices(): number[] {
+  return [...UPGRADE_LADDER];
+}

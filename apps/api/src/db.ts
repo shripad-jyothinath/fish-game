@@ -5,6 +5,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
 
@@ -153,11 +154,12 @@ export interface EntitlementRow {
   created_at: number;
 }
 
-export interface GoldConversionRow {
+export interface GoldMovementRow {
   id: string;
   user_id: string;
-  gold_spent: number;
-  gold_amount: number;
+  delta: number;
+  reason: string;
+  ref: string | null;
   created_at: number;
 }
 
@@ -249,17 +251,6 @@ export function openDatabase(dbPath: string) {
       `INSERT INTO payout_claims (id, user_id, match_id, amount, currency, status, hedera_tx_id, error, created_at, confirmed_at)
        VALUES (@id, @user_id, @match_id, @amount, @currency, @status, @hedera_tx_id, @error, @created_at, @confirmed_at)`,
     ),
-    pendingPayouts: db.prepare(`SELECT * FROM payout_claims WHERE user_id = ? AND status = 'pending' ORDER BY created_at ASC`),
-    sumRewardsSinceStmt: db.prepare(
-      `SELECT COALESCE(SUM(amount), 0) AS total FROM payout_claims WHERE user_id = ? AND created_at >= ? AND status != 'failed'`,
-    ),
-    rewardTotalsStmt: db.prepare(
-      `SELECT
-         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount ELSE 0 END), 0) AS pending,
-         COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0) AS paid,
-         COALESCE(SUM(CASE WHEN status != 'failed' THEN amount ELSE 0 END), 0) AS totalEarned
-       FROM payout_claims WHERE user_id = ?`,
-    ),
 
     insertNftItem: db.prepare(
       `INSERT INTO nft_items (id, user_id, item_id, item_type, name, description, token_id, serial_number, status,
@@ -305,13 +296,29 @@ export function openDatabase(dbPath: string) {
     ),
     deleteEntitlementStmt: db.prepare(`DELETE FROM entitlements WHERE id = ?`),
 
-    insertGoldConversion: db.prepare(
-      `INSERT INTO gold_conversions (id, user_id, gold_spent, gold_amount, created_at)
-       VALUES (@id, @user_id, @gold_spent, @gold_amount, @created_at)`,
+    insertGoldMovement: db.prepare(
+      `INSERT INTO gold_ledger (id, user_id, delta, reason, ref, created_at)
+       VALUES (@id, @user_id, @delta, @reason, @ref, @created_at)`,
     ),
-    sumGoldConvertedSinceStmt: db.prepare(
-      `SELECT COALESCE(SUM(gold_spent), 0) AS total FROM gold_conversions WHERE user_id = ? AND created_at >= ?`,
+    goldBalanceStmt: db.prepare(`SELECT COALESCE(SUM(delta), 0) AS balance FROM gold_ledger WHERE user_id = ?`),
+    goldSumByReasonStmt: db.prepare(
+      `SELECT COALESCE(SUM(delta), 0) AS total FROM gold_ledger WHERE user_id = ? AND reason = ? AND created_at >= ?`,
     ),
+    goldTotalsByReasonStmt: db.prepare(
+      `SELECT reason, COALESCE(SUM(delta), 0) AS total FROM gold_ledger WHERE user_id = ? GROUP BY reason`,
+    ),
+    goldMovementsByUser: db.prepare(`SELECT * FROM gold_ledger WHERE user_id = ? ORDER BY created_at DESC LIMIT ?`),
+    upgradesByUser: db.prepare(`SELECT upgrade_id, level FROM player_upgrades WHERE user_id = ?`),
+    upgradeByUser: db.prepare(`SELECT level FROM player_upgrades WHERE user_id = ? AND upgrade_id = ?`),
+    upsertUpgrade: db.prepare(
+      `INSERT INTO player_upgrades (user_id, upgrade_id, level, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, upgrade_id) DO UPDATE SET level = excluded.level, updated_at = excluded.updated_at`,
+    ),
+    insertRewardClaim: db.prepare(
+      `INSERT INTO reward_claims (id, user_id, kind, ref, amount, created_at)
+       VALUES (@id, @user_id, @kind, @ref, @amount, @created_at)`,
+    ),
+    countRewardClaimsStmt: db.prepare(`SELECT COUNT(*) AS n FROM reward_claims WHERE user_id = ? AND kind = ?`),
   };
 
   return {
@@ -436,26 +443,6 @@ export function openDatabase(dbPath: string) {
     insertPayoutClaim(row: PayoutClaimRow): void {
       stmts.insertPayout.run(row);
     },
-    listPendingPayouts(userId: string): PayoutClaimRow[] {
-      return stmts.pendingPayouts.all(userId) as PayoutClaimRow[];
-    },
-    sumRewardsSince(userId: string, since: number): number {
-      const row = stmts.sumRewardsSinceStmt.get(userId, since) as { total: number } | undefined;
-      return row?.total ?? 0;
-    },
-    markPayoutsPaid(ids: string[], txId: string, at: number): void {
-      if (ids.length === 0) return;
-      const placeholders = ids.map(() => '?').join(',');
-      db.prepare(
-        `UPDATE payout_claims SET status = 'paid', hedera_tx_id = ?, confirmed_at = ?, error = NULL WHERE id IN (${placeholders})`,
-      ).run(txId, at, ...ids);
-    },
-    rewardTotals(userId: string): { pending: number; paid: number; totalEarned: number } {
-      const row = stmts.rewardTotalsStmt.get(userId) as
-        | { pending: number; paid: number; totalEarned: number }
-        | undefined;
-      return row ?? { pending: 0, paid: 0, totalEarned: 0 };
-    },
 
     insertNftItem(row: NftItemRow): void {
       stmts.insertNftItem.run(row);
@@ -527,12 +514,153 @@ export function openDatabase(dbPath: string) {
     },
 
     // -------------------------------------------------------- gold conversions
-    insertGoldConversion(row: GoldConversionRow): void {
-      stmts.insertGoldConversion.run(row);
+    // (removed: 💰 is practice-only now; all value flows through gold_ledger)
+
+    // ------------------------------------------------------------ $GOLD ledger
+    /** Spendable in-game balance (whole $GOLD). */
+    goldBalance(userId: string): number {
+      const row = stmts.goldBalanceStmt.get(userId) as { balance: number } | undefined;
+      return row?.balance ?? 0;
     },
-    sumGoldConvertedSince(userId: string, since: number): number {
-      const row = stmts.sumGoldConvertedSinceStmt.get(userId, since) as { total: number } | undefined;
+    sumGoldByReasonSince(userId: string, reason: string, since: number): number {
+      const row = stmts.goldSumByReasonStmt.get(userId, reason, since) as { total: number } | undefined;
       return row?.total ?? 0;
+    },
+    /** All-time totals grouped by movement reason (for the account summary). */
+    goldTotalsByReason(userId: string): Record<string, number> {
+      const out: Record<string, number> = {};
+      for (const row of stmts.goldTotalsByReasonStmt.all(userId) as Array<{ reason: string; total: number }>) {
+        out[row.reason] = row.total;
+      }
+      return out;
+    },
+    listGoldMovements(userId: string, limit = 25): GoldMovementRow[] {
+      return stmts.goldMovementsByUser.all(userId, limit) as GoldMovementRow[];
+    },
+    /** Credit $GOLD (single append-only movement). */
+    creditGold(userId: string, amount: number, reason: string, ref: string | null = null): void {
+      if (!Number.isFinite(amount) || amount <= 0) throw new Error('creditGold: amount must be positive');
+      stmts.insertGoldMovement.run({
+        id: randomUUID(),
+        user_id: userId,
+        delta: Math.floor(amount),
+        reason,
+        ref,
+        created_at: Date.now(),
+      });
+    },
+    /** Debit only if affordable; false when the balance is insufficient. */
+    spendGold(userId: string, amount: number, reason: string, ref: string | null = null): boolean {
+      if (!Number.isFinite(amount) || amount <= 0) return false;
+      const run = db.transaction(() => {
+        const balance = (stmts.goldBalanceStmt.get(userId) as { balance: number }).balance;
+        if (balance < amount) return false;
+        stmts.insertGoldMovement.run({
+          id: randomUUID(),
+          user_id: userId,
+          delta: -Math.floor(amount),
+          reason,
+          ref,
+          created_at: Date.now(),
+        });
+        return true;
+      });
+      return run();
+    },
+    /** Buy a shop item: debit + entitlement in one transaction. */
+    purchaseItemAtomic(
+      userId: string,
+      entitlement: EntitlementRow,
+      price: number,
+    ): 'ok' | 'insufficient' | 'owned' {
+      const run = db.transaction(() => {
+        const existing = stmts.entitlementByUserItem.get(
+          userId,
+          entitlement.item_type,
+          entitlement.item_id,
+        ) as EntitlementRow | undefined;
+        if (existing) return 'owned' as const;
+        const balance = (stmts.goldBalanceStmt.get(userId) as { balance: number }).balance;
+        if (balance < price) return 'insufficient' as const;
+        stmts.insertGoldMovement.run({
+          id: randomUUID(),
+          user_id: userId,
+          delta: -price,
+          reason: 'purchase',
+          ref: `${entitlement.item_type}:${entitlement.item_id}`,
+          created_at: Date.now(),
+        });
+        stmts.insertEntitlement.run(entitlement);
+        return 'ok' as const;
+      });
+      return run();
+    },
+    /** Server-owned workshop upgrade levels. */
+    upgradeLevels(userId: string): Record<string, number> {
+      const out: Record<string, number> = {};
+      for (const row of stmts.upgradesByUser.all(userId) as Array<{ upgrade_id: string; level: number }>) {
+        out[row.upgrade_id] = row.level;
+      }
+      return out;
+    },
+    /** Buy the next upgrade level; pricing is based on the server-owned level. */
+    purchaseUpgradeAtomic(
+      userId: string,
+      upgradeId: string,
+      maxLevel: number,
+      priceForLevel: (level: number) => number,
+    ): { result: 'ok' | 'insufficient' | 'maxed'; level: number; price?: number } {
+      const run = db.transaction(() => {
+        const row = stmts.upgradeByUser.get(userId, upgradeId) as { level: number } | undefined;
+        const level = row?.level ?? 0;
+        if (level >= maxLevel) return { result: 'maxed' as const, level };
+        const price = priceForLevel(level);
+        const balance = (stmts.goldBalanceStmt.get(userId) as { balance: number }).balance;
+        if (balance < price) return { result: 'insufficient' as const, level };
+        stmts.insertGoldMovement.run({
+          id: randomUUID(),
+          user_id: userId,
+          delta: -price,
+          reason: 'upgrade',
+          ref: `${upgradeId}:${level + 1}`,
+          created_at: Date.now(),
+        });
+        stmts.upsertUpgrade.run(userId, upgradeId, level + 1, Date.now());
+        return { result: 'ok' as const, level: level + 1, price };
+      });
+      return run();
+    },
+    /** One claim per kind+ref (daily/wheel/stage); credits the ledger atomically. */
+    claimReward(userId: string, kind: string, ref: string, amount: number): boolean {
+      if (!Number.isFinite(amount) || amount <= 0) return false;
+      const run = db.transaction(() => {
+        try {
+          stmts.insertRewardClaim.run({
+            id: randomUUID(),
+            user_id: userId,
+            kind,
+            ref,
+            amount: Math.floor(amount),
+            created_at: Date.now(),
+          });
+        } catch {
+          return false; // already claimed for this period
+        }
+        stmts.insertGoldMovement.run({
+          id: randomUUID(),
+          user_id: userId,
+          delta: Math.floor(amount),
+          reason: `${kind}_reward`,
+          ref,
+          created_at: Date.now(),
+        });
+        return true;
+      });
+      return run();
+    },
+    countRewardClaims(userId: string, kind: string): number {
+      const row = stmts.countRewardClaimsStmt.get(userId, kind) as { n: number } | undefined;
+      return row?.n ?? 0;
     },
 
     close(): void {

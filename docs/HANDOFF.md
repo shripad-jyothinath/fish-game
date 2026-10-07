@@ -87,6 +87,21 @@ may be in flight (npm install, sim run) — verify before assuming.
 > stats are still self-reported (online arena is now exact); external-linked wallets can't buy
 > with `$GOLD` yet (needs WalletConnect signing); gold earned offline is client-side before
 > conversion (caps bound it).
+>
+> **Update (Option A — $GOLD is the only currency, server ledger):** 💰 is gone from the
+> signed-in economy. New `gold_ledger` (append-only: match/stage/daily/wheel rewards,
+> deposits, purchases, upgrades, withdraw, refunds), `player_upgrades` (server-owned
+> levels) and `reward_claims` (one-per-period). `recordMatch` now credits the ledger
+> immediately (daily cap reads the ledger); withdraw = ledger → wallet (atomic reserve +
+> refund on failure); `POST /hedera/gold/deposit` = wallet → treasury → ledger; Armory and
+> Workshop purchases are instant atomic ledger debits (no chain latency, works with Hedera
+> offline); rebalanced prices (rank curve: weapons 10–600, fish 10–2,500, hats 10–150,
+> upgrades 15/30/60/120/240); wheel = **one spin/day** server-rolled; daily/stage rewards
+> server-credited once; client shows $GOLD in menu/shop/panel (`updateMenuStats` patched),
+> guests keep frozen practice 💰. Removed: conversion endpoint, claim pipeline (replaced by
+> withdraw), legacy payout totals. Tests: API 22/22 (ledger math, atomic purchase/upgrade,
+> reward endpoints once-per-day, withdraw refund) + room 15/15. Deployed & live; E2E:
+> match → ledger credit → item/upgrade purchase → withdraw on-chain → deposit back.
 
 ---
 

@@ -15,7 +15,8 @@ import { openDatabase, type NftItemRow } from '../src/db.ts';
 import { loadDotEnv } from '../src/env.ts';
 import { decodeMemo, MirrorClient } from '../src/hedera/mirror.ts';
 import { calculateGoldReward, RewardService } from '../src/hedera/rewards.ts';
-import { findGoldShopItem, goldShop, priceForRank } from '../src/hedera/shop.ts';
+import { findGoldShopItem, goldShop, priceForRank, upgradePriceFor } from '../src/hedera/shop.ts';
+import type { TokenService } from '../src/hedera/token.ts';
 import { signInternalBody, signRoomTicket, verifyRoomTicket } from '../src/hedera/tickets.ts';
 import { isValidHederaAccountId, stripChecksum, verifyMessageSignature, WalletService } from '../src/hedera/wallet.ts';
 import { buildServer } from '../src/index.ts';
@@ -36,8 +37,6 @@ const settings: HederaSettings = {
   rewardDailyCap: 500,
   rewardMatchCap: 100,
   matchCooldownMs: 10000,
-  goldConvertRate: 100,
-  goldConvertDailyGold: 20_000,
   editionLimits: { golden_leviathan: 1 },
   autoWallets: true,
   mirrorBaseUrl: 'https://example.invalid',
@@ -293,8 +292,7 @@ test('entitlements reserve atomically, activate, and free slots on delete', () =
   store.close();
 });
 
-test('gold → $GOLD conversion respects rate and daily cap', () => {
-  const convertSettings: HederaSettings = { ...settings, goldConvertRate: 100, goldConvertDailyGold: 250 };
+test('$GOLD ledger credits, spends, and summarises', () => {
   const store = openDatabase(':memory:');
   store.createUser({
     id: 'u1',
@@ -305,22 +303,237 @@ test('gold → $GOLD conversion respects rate and daily cap', () => {
     created_at: 1,
     last_login_at: null,
   });
-  const rewards = new RewardService(store, convertSettings, undefined, undefined);
 
-  const first = rewards.convertGold('u1', 1000); // capped to 250 → 2 $GOLD
-  assert.equal(first.gold, 200, 'only whole multiples of the rate are spent');
-  assert.equal(first.amount, 2);
-  assert.equal(first.rate, 100);
-  assert.equal(first.dailyRemaining, 50);
-  assert.equal(first.pending, 2, 'credited as pending reward');
-  assert.equal(rewards.totals('u1').pending, 2);
+  store.creditGold('u1', 100, 'match_reward', 'm1');
+  assert.equal(store.goldBalance('u1'), 100);
+  assert.equal(store.spendGold('u1', 30, 'purchase', 'weapon:x'), true);
+  assert.equal(store.goldBalance('u1'), 70);
+  assert.equal(store.spendGold('u1', 1000, 'purchase', null), false, 'cannot overspend');
+  assert.equal(store.goldBalance('u1'), 70);
+  assert.equal(store.goldTotalsByReason('u1').match_reward, 100);
+  assert.equal(store.goldTotalsByReason('u1').purchase, -30);
 
-  assert.throws(() => rewards.convertGold('u1', 500), /at least 100/, 'daily cap blocks further conversion');
-  assert.throws(() => rewards.convertGold('u1', -5), /positive/);
-
-  const disabled = new RewardService(store, { ...convertSettings, goldConvertDailyGold: 0 }, undefined, undefined);
-  assert.throws(() => disabled.convertGold('u1', 100), /disabled/);
+  const rewards = new RewardService(store, settings, undefined, undefined);
+  const summary = rewards.ledgerSummary('u1');
+  assert.equal(summary.balance, 70);
+  assert.equal(summary.earned, 100);
+  assert.equal(summary.withdrawn, 0);
   store.close();
+});
+
+test('match rewards credit the ledger and respect the daily cap', async () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  const rewards = new RewardService(store, { ...settings, matchCooldownMs: 0, rewardDailyCap: 30 }, undefined, undefined);
+  const stats = { mode: 'classic', score: 1500, kills: 5, level: 4, food: 0, chests: 0, kingTime: 0, durationMs: 0 } as const;
+
+  const first = await rewards.recordMatch('u1', stats);
+  assert.equal(first.reward.amount, 28, 'score/150 + 3/kill + level bonus');
+  assert.equal(store.goldBalance('u1'), 28, 'credited immediately');
+
+  const second = await rewards.recordMatch('u1', stats);
+  assert.equal(second.reward.amount, 2, 'daily cap limits the second match');
+  assert.equal(store.goldBalance('u1'), 30);
+  store.close();
+});
+
+test('item and upgrade purchases are atomic and priced server-side', () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  store.creditGold('u1', 1000, 'match_reward', null);
+
+  const item = goldShop().items.find((entry) => entry.priceGold <= 50)!;
+  const entitlement = {
+    id: 'e1',
+    user_id: 'u1',
+    item_type: item.type,
+    item_id: item.id,
+    source: 'gold_purchase',
+    status: 'active',
+    price_gold: item.priceGold,
+    hedera_tx_id: null,
+    created_at: 1,
+  };
+  assert.equal(store.purchaseItemAtomic('u1', entitlement, item.priceGold), 'ok');
+  assert.equal(store.goldBalance('u1'), 1000 - item.priceGold);
+  assert.ok(store.findEntitlement('u1', item.type, item.id), 'entitlement granted');
+  assert.equal(store.purchaseItemAtomic('u1', { ...entitlement, id: 'e2' }, item.priceGold), 'owned');
+  assert.equal(
+    store.purchaseItemAtomic('u1', { ...entitlement, id: 'e3', item_id: '__nope' }, 100000),
+    'insufficient',
+    'cannot overspend',
+  );
+
+  const up1 = store.purchaseUpgradeAtomic('u1', 'speed_boost', 5, (level) => upgradePriceFor(level));
+  assert.equal(up1.result, 'ok');
+  assert.equal(up1.level, 1);
+  assert.equal(up1.price, 15, 'first level costs the ladder price');
+  assert.equal(store.upgradeLevels('u1').speed_boost, 1);
+  for (let i = 0; i < 4; i++) store.purchaseUpgradeAtomic('u1', 'speed_boost', 5, (level) => upgradePriceFor(level));
+  assert.equal(store.upgradeLevels('u1').speed_boost, 5);
+  assert.equal(store.purchaseUpgradeAtomic('u1', 'speed_boost', 5, (level) => upgradePriceFor(level)).result, 'maxed');
+  store.close();
+});
+
+test('one-claim-per-period rewards credit the ledger exactly once', () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+
+  assert.equal(store.claimReward('u1', 'daily', '2026-10-07', 5), true);
+  assert.equal(store.claimReward('u1', 'daily', '2026-10-07', 5), false, 'same day rejected');
+  assert.equal(store.claimReward('u1', 'daily', '2026-10-08', 5), true, 'next day works');
+  assert.equal(store.claimReward('u1', 'wheel', '2026-10-07', 20), true);
+  assert.equal(store.claimReward('u1', 'wheel', '2026-10-07', 50), false, 'one spin per day');
+  assert.equal(store.goldBalance('u1'), 30);
+  store.close();
+});
+
+test('withdraw moves ledger $GOLD to the wallet and refunds on failure', async () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  store.creditGold('u1', 50, 'match_reward', null);
+  const wallet = {
+    getPayoutWallet: () => ({ accountId: '0.0.9', method: 'custodial' as const }),
+  } as unknown as WalletService;
+
+  const okToken = {
+    payGold: async () => ({ transactionId: '0.0.1@2.3', method: 'transfer' as const }),
+  } as unknown as TokenService;
+  const rewards = new RewardService(store, settings, undefined, okToken);
+  const out = await rewards.withdraw('u1', 20, wallet);
+  assert.equal(out.amount, 20);
+  assert.equal(store.goldBalance('u1'), 30);
+
+  const failToken = {
+    payGold: async () => {
+      throw new Error('network down');
+    },
+  } as unknown as TokenService;
+  const failing = new RewardService(store, settings, undefined, failToken);
+  await assert.rejects(() => failing.withdraw('u1', 30, wallet), /network down/);
+  assert.equal(store.goldBalance('u1'), 30, 'refunded after a failed transfer');
+  store.close();
+});
+
+test('reward endpoints are once-per-day and purchases debit the ledger', async () => {
+  const dbPath = path.join(os.tmpdir(), `fishio-ledger-${Date.now()}.db`);
+  const app = buildServer(
+    loadConfig({ FISHIO_DB_PATH: dbPath, INTERNAL_HMAC_SECRET: 'reward-secret', NODE_ENV: 'test' }),
+  );
+  try {
+    const reg = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email: 'r1@example.com', username: 'reward1', password: 'CheckPass123' },
+    });
+    assert.equal(reg.statusCode, 201);
+    const cookie = reg.cookies.find((c) => c.name === 'fishio_session');
+    assert.ok(cookie, 'session cookie');
+    const auth = { cookies: { fishio_session: cookie.value } };
+
+    const daily1 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/daily' });
+    assert.equal(daily1.statusCode, 200);
+    assert.equal((daily1.json() as { amount: number }).amount, 5);
+    const daily2 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/daily' });
+    assert.equal(daily2.statusCode, 409, 'daily is once per day');
+
+    const wheel1 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/wheel' });
+    assert.equal(wheel1.statusCode, 200);
+    const wheel2 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/wheel' });
+    assert.equal(wheel2.statusCode, 409, 'one spin per day');
+
+    const stage1 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/stage', payload: { level: 1 } });
+    assert.equal(stage1.statusCode, 200);
+    assert.equal((stage1.json() as { amount: number }).amount, 10);
+    const stage2 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/stage', payload: { level: 1 } });
+    assert.equal(stage2.statusCode, 409, 'stage rewards are once');
+
+    // Server-authored match intake credits the ledger.
+    const userId = (reg.json() as { user: { id: string } }).user.id;
+    const body = JSON.stringify({
+      userId,
+      stats: { mode: 'classic', score: 1500, kills: 5, level: 4, durationMs: 1000 },
+    });
+    const intake = await app.inject({
+      method: 'POST',
+      url: '/internal/matches',
+      payload: body,
+      headers: { 'content-type': 'application/vnd.fishio.intake+json', 'x-fishio-signature': signInternalBody('reward-secret', body) },
+    });
+    assert.equal(intake.statusCode, 201);
+
+    const gold = await app.inject({ ...auth, method: 'GET', url: '/api/v1/hedera/gold' });
+    assert.equal(gold.statusCode, 200);
+    const balance = (gold.json() as { balance: number }).balance;
+    assert.ok(balance >= 43, `balance from rewards + match (${balance})`);
+    assert.equal((gold.json() as { earned: number }).earned, balance, 'earned equals credits so far');
+
+    const item = goldShop().items.find((entry) => entry.priceGold <= balance)!;
+    const buy = await app.inject({
+      ...auth,
+      method: 'POST',
+      url: '/api/v1/hedera/shop/purchase',
+      payload: { type: item.type, id: item.id },
+    });
+    assert.equal(buy.statusCode, 201);
+    assert.equal((buy.json() as { balance: number }).balance, balance - item.priceGold, 'purchase debits the ledger');
+
+    const dup = await app.inject({
+      ...auth,
+      method: 'POST',
+      url: '/api/v1/hedera/shop/purchase',
+      payload: { type: item.type, id: item.id },
+    });
+    assert.equal(dup.statusCode, 409, 'already owned');
+
+    const upg = await app.inject({
+      ...auth,
+      method: 'POST',
+      url: '/api/v1/hedera/shop/upgrade',
+      payload: { id: 'speed_boost' },
+    });
+    assert.equal(upg.statusCode, 200);
+    assert.equal((upg.json() as { level: number }).level, 1);
+
+    const levels = await app.inject({ ...auth, method: 'GET', url: '/api/v1/me/upgrades' });
+    assert.equal(levels.statusCode, 200);
+    assert.equal((levels.json() as { levels: Record<string, number> }).levels.speed_boost, 1);
+  } finally {
+    await app.close();
+    fs.rmSync(dbPath, { force: true });
+  }
 });
 
 test('room tickets round-trip and reject tampering/expiry', () => {

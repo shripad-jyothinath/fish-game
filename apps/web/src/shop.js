@@ -896,24 +896,24 @@ const LEVEL_CHALLENGES = [
 ];
 
 const DAILY_REWARDS = [
-    { day: 1, gold: 200, label: '200 💰' },
-    { day: 2, gold: 400, label: '400 💰' },
-    { day: 3, gold: 600, label: '600 💰' },
-    { day: 4, gold: 900, label: '900 💰' },
-    { day: 5, gold: 1200, label: '1,200 💰' },
-    { day: 6, gold: 1600, label: '1,600 💰' },
-    { day: 7, gold: 3000, label: '3,000 💰 + 👑' }
+    { day: 1, gold: 5, label: '5 $GOLD' },
+    { day: 2, gold: 10, label: '10 $GOLD' },
+    { day: 3, gold: 15, label: '15 $GOLD' },
+    { day: 4, gold: 20, label: '20 $GOLD' },
+    { day: 5, gold: 25, label: '25 $GOLD' },
+    { day: 6, gold: 40, label: '40 $GOLD' },
+    { day: 7, gold: 60, label: '60 $GOLD + 👑' }
 ];
 
 const WHEEL_SECTORS = [
-    { label: '100 💰', gold: 100, color: '#3498db' },
-    { label: '250 💰', gold: 250, color: '#9b59b6' },
-    { label: '500 💰', gold: 500, color: '#e67e22' },
-    { label: '1,000 💰', gold: 1000, color: '#e74c3c' },
-    { label: '2,500 👑', gold: 2500, color: '#f1c40f' },
-    { label: '150 💰', gold: 150, color: '#1abc9c' },
-    { label: '750 💰', gold: 750, color: '#e84393' },
-    { label: '5,000 💎', gold: 5000, color: '#ffd700' }
+    { label: '5', gold: 5, color: '#3498db' },
+    { label: '10', gold: 10, color: '#9b59b6' },
+    { label: '15', gold: 15, color: '#1abc9c' },
+    { label: '20', gold: 20, color: '#e67e22' },
+    { label: '30', gold: 30, color: '#e74c3c' },
+    { label: '50', gold: 50, color: '#e84393' },
+    { label: '100 👑', gold: 100, color: '#f1c40f' },
+    { label: '250 💎', gold: 250, color: '#ffd700' }
 ];
 
 class ShopManager {
@@ -947,6 +947,8 @@ class ShopManager {
         this.lastLoginTimestamp = 0;
         this.hasClaimedDailyToday = false;
         this.lastWheelSpinDay = '';
+        /** True while signed in: local 💰 is practice-only and frozen. */
+        this.goldFrozen = false;
 
         this.loadSaveData();
         this.checkDailyReset();
@@ -1047,6 +1049,9 @@ class ShopManager {
     }
 
     addGold(amount) {
+        // Signed-in players earn $GOLD on the server ledger; local practice
+        // coins are frozen so the two can never mix.
+        if (this.goldFrozen) return this.gold;
         this.gold += amount;
         this.save();
         return this.gold;

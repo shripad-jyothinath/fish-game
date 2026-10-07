@@ -100,23 +100,19 @@ offline mode (matches are still recorded locally). To go live:
    link a wallet (`0.0.x` proof-of-ownership transfer) to claim `$GOLD` and mint
    owned cosmetics as NFTs.
 
-**$GOLD shop (testnet):** signed-in players can buy cosmetics directly with `$GOLD` —
-locked items in the Armory show a `⛓ BUY (n $GOLD)` button. Prices are server-side
-cost bands (2–200 `$GOLD`), the token moves from the player's in-game custodial wallet
-to the treasury, and the unlock is stored server-side (`entitlements`) so it follows the
-account to every device. Endpoints: `GET /api/v1/hedera/shop`,
-`POST /api/v1/hedera/shop/purchase`, `GET /api/v1/me/entitlements`. Verified live:
-match → HCS #2 → claim 28 `$GOLD` → buy Ninja Katana (2 `$GOLD`) → wallet debited 28→26.
-
-**Gold ↔ `$GOLD`:** the account panel also converts in-game 💰 into pending `$GOLD`
-(`POST /api/v1/hedera/gold/convert`, default 100 💰 = 1 `$GOLD`, 20k 💰/day cap), and
-converted amounts flow through the same claim pipeline. The reverse direction already
-exists via match rewards and the shop.
+**Currency: `$GOLD` only (testnet).** Signed-in players hold an in-game `$GOLD`
+balance on the server (append-only ledger, `GET /api/v1/hedera/gold`): matches, daily
+gifts, the lucky wheel (one spin/day) and stage clears credit it instantly; the Armory
+and Workshop spend it instantly (server-priced: weapons 10–600, fish 10–2,500, hats
+10–150, upgrades 15/30/60/120/240). **Withdraw** moves it on-chain to the player's
+custodial wallet (`POST /api/v1/hedera/gold/withdraw`, HashScan link); **Deposit**
+brings it back (`POST /api/v1/hedera/gold/deposit`). NFTs mint from owned items as
+before. Guests keep a clearly-separate practice 💰 that can never convert.
 
 **M4 — online matches count:** signed-in players get a short-lived signed **room ticket**
 (`POST /api/v1/hedera/room-ticket`) that travels in the arena `hello`. When they die, the
 room server posts the server-authored result to `POST /internal/matches`
-(HMAC-signed with `INTERNAL_HMAC_SECRET`) — the same HCS attestation + pending `$GOLD`
+(HMAC-signed with `INTERNAL_HMAC_SECRET`) — the same HCS attestation + `$GOLD` credit
 pipeline as offline play, and the game-over screen shows the HashScan receipt via a
 `match_receipt` follow-up. Guests play normally with no ticket.
 

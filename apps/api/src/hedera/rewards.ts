@@ -121,7 +121,7 @@ export class RewardService {
     }
 
     const earned = calculateGoldReward(stats, this.settings);
-    const spentToday = this.store.sumRewardsSince(userId, startOfUtcDay(now));
+    const spentToday = this.store.sumGoldByReasonSince(userId, 'match_reward', startOfUtcDay(now));
     const remaining = Math.max(0, this.settings.rewardDailyCap - spentToday);
     const amount = Math.min(earned, remaining);
 
@@ -145,19 +145,10 @@ export class RewardService {
     });
     this.store.bumpPlayerStats(userId, stats, now);
 
+    // $GOLD is credited to the in-game ledger immediately; withdrawing to the
+    // player's Hedera wallet is a separate, explicit action.
     if (amount > 0) {
-      this.store.insertPayoutClaim({
-        id: randomUUID(),
-        user_id: userId,
-        match_id: matchId,
-        amount,
-        currency: 'gold_token',
-        status: 'pending',
-        hedera_tx_id: null,
-        error: null,
-        created_at: now,
-        confirmed_at: null,
-      });
+      this.store.creditGold(userId, amount, 'match_reward', matchId);
     }
 
     return {
@@ -172,94 +163,64 @@ export class RewardService {
     };
   }
 
-  totals(userId: string): { pending: number; paid: number; totalEarned: number } {
-    return this.store.rewardTotals(userId);
-  }
-
-  /**
-   * Convert in-game 💰 into pending $GOLD at the configured rate. Converted
-   * gold flows through the same pending/claim pipeline as match rewards.
-   *
-   * Trust note: the client deducts its local gold before calling this; the
-   * server enforces the rate and a daily gold cap so abuse stays bounded.
-   * M4 room results (server-authored) can later feed this server-side too.
-   */
-  convertGold(
-    userId: string,
-    rawGold: number,
-  ): { gold: number; amount: number; rate: number; dailyRemaining: number; pending: number } {
-    const now = Date.now();
-    const rate = this.settings.goldConvertRate;
-    const dailyCap = this.settings.goldConvertDailyGold;
-    if (dailyCap <= 0) throw codedError('conversion_disabled', 'Gold conversion is disabled on this server.');
-    if (!Number.isFinite(rawGold)) throw codedError('invalid_amount', 'Enter a gold amount.');
-
-    const gold = Math.floor(rawGold);
-    if (gold <= 0) throw codedError('invalid_amount', 'Enter a positive gold amount.');
-
-    const spentToday = this.store.sumGoldConvertedSince(userId, startOfUtcDay(now));
-    const remaining = Math.max(0, dailyCap - spentToday);
-    const amount = Math.floor(Math.min(gold, remaining) / rate);
-    if (amount <= 0) {
-      throw codedError('below_minimum', `You need at least ${rate} 💰 to convert (daily cap left: ${remaining} 💰).`);
-    }
-    const spent = amount * rate;
-
-    this.store.insertGoldConversion({
-      id: randomUUID(),
-      user_id: userId,
-      gold_spent: spent,
-      gold_amount: amount,
-      created_at: now,
-    });
-    this.store.insertPayoutClaim({
-      id: randomUUID(),
-      user_id: userId,
-      match_id: null, // converted gold, not a match reward
-      amount,
-      currency: 'gold_token',
-      status: 'pending',
-      hedera_tx_id: null,
-      error: null,
-      created_at: now,
-      confirmed_at: null,
-    });
-
+  /** In-game $GOLD summary for the account panel. */
+  ledgerSummary(userId: string): { balance: number; earned: number; withdrawn: number } {
+    const byReason = this.store.goldTotalsByReason(userId);
+    const earned =
+      (byReason.match_reward ?? 0) +
+      (byReason.stage_reward ?? 0) +
+      (byReason.daily_reward ?? 0) +
+      (byReason.wheel_reward ?? 0);
     return {
-      gold: spent,
-      amount,
-      rate,
-      dailyRemaining: Math.max(0, remaining - spent),
-      pending: this.totals(userId).pending,
+      balance: this.store.goldBalance(userId),
+      earned,
+      withdrawn: Math.abs(byReason.withdraw ?? 0),
     };
   }
 
-  async claim(userId: string, wallet: WalletService): Promise<{ amount: number; payment: TokenPayment }> {
+  /**
+   * Move $GOLD from the in-game ledger to the player's Hedera wallet.
+   * The debit is reserved atomically first and refunded if the on-chain
+   * transfer fails, so a withdrawal can never be lost or double-spent.
+   */
+  async withdraw(
+    userId: string,
+    requested: number | 'all',
+    wallet: WalletService,
+  ): Promise<{ amount: number; payment: TokenPayment }> {
+    if (!this.token) throw codedError('payout_disabled', 'Hedera payouts are not configured on this server yet.');
+
+    const balance = this.store.goldBalance(userId);
+    const amount = requested === 'all' ? balance : Math.floor(Number(requested));
+    if (!Number.isFinite(amount) || amount <= 0) throw codedError('invalid_amount', 'Enter a positive $GOLD amount.');
+    if (amount > balance) throw codedError('insufficient_gold', 'Not enough $GOLD in your in-game balance.');
+
     const link = wallet.getPayoutWallet(userId);
-    if (!link) {
-      const error = new Error('Link a Hedera account before claiming $GOLD.');
-      (error as Error & { code?: string }).code = 'wallet_not_linked';
-      throw error;
-    }
-    if (!this.token) {
-      const error = new Error('Hedera payouts are not configured on this server yet.');
-      (error as Error & { code?: string }).code = 'payout_disabled';
-      throw error;
-    }
-    const pending = this.store.listPendingPayouts(userId);
-    const amount = pending.reduce((sum, row) => sum + row.amount, 0);
-    if (amount <= 0 || pending.length === 0) {
-      const error = new Error('Nothing to claim right now.');
-      (error as Error & { code?: string }).code = 'nothing_to_claim';
-      throw error;
+    if (!link) throw codedError('wallet_not_linked', 'Your wallet is not ready yet — try again in a moment.');
+
+    if (!this.store.spendGold(userId, amount, 'withdraw', null)) {
+      throw codedError('insufficient_gold', 'Not enough $GOLD in your in-game balance.');
     }
 
-    const payment = await this.token.payGold(link.accountId, amount);
-    this.store.markPayoutsPaid(
-      pending.map((row) => row.id),
-      payment.transactionId,
-      Date.now(),
-    );
-    return { amount, payment };
+    try {
+      const payment = await this.token.payGold(link.accountId, amount);
+      this.store.insertPayoutClaim({
+        id: randomUUID(),
+        user_id: userId,
+        match_id: null,
+        amount,
+        currency: 'gold_token',
+        status: 'paid',
+        hedera_tx_id: payment.transactionId,
+        error: null,
+        created_at: Date.now(),
+        confirmed_at: Date.now(),
+      });
+      return { amount, payment };
+    } catch (err) {
+      // Nothing left the wallet: put the $GOLD back in the game balance.
+      this.store.creditGold(userId, amount, 'withdraw_failed', null);
+      throw err;
+    }
   }
 }

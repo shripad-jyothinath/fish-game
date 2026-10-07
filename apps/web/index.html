@@ -674,8 +674,31 @@
             }
         }
 
-        function claimDailyReward() {
-            const reward = window.shopManager.claimDailyReward();
+        async function claimDailyReward() {
+            const sm = window.shopManager;
+            const goldMode = Boolean(window.fishGoldShop && window.fishGoldShop.enabled());
+            if (goldMode) {
+                try {
+                    const result = await window.fishGoldShop.claimDaily();
+                    sm.hasClaimedDailyToday = true;
+                    sm.lastLoginTimestamp = Date.now();
+                    sm.save();
+                    renderDailyCalendar();
+                    updateMenuStats();
+                    window.soundEngine.playJackpot();
+                    if (window.fishToast) window.fishToast(`🎁 +${result.amount} $GOLD credited (balance ${result.balance})`);
+                } catch (err) {
+                    if (err && err.code === 'already_claimed') {
+                        sm.hasClaimedDailyToday = true;
+                        sm.save();
+                        renderDailyCalendar();
+                    } else {
+                        alert(`Could not claim: ${(err && err.message) || 'try again'}`);
+                    }
+                }
+                return;
+            }
+            const reward = sm.claimDailyReward();
             if (reward) {
                 renderDailyCalendar();
                 updateMenuStats();
@@ -786,12 +809,29 @@
             ctx.restore();
         }
 
-        function spinWheel() {
+        async function spinWheel() {
             if (isWheelSpinning) return;
             const sm = window.shopManager;
+            const goldMode = Boolean(window.fishGoldShop && window.fishGoldShop.enabled());
+
             if (!sm.canSpinWheel()) {
                 alert('One spin per day — you already used today\u2019s spin! 🎡 Come back tomorrow.');
                 return;
+            }
+
+            // Signed-in: the server owns the one-spin-per-day rule and the prize.
+            let serverPrize = null;
+            if (goldMode) {
+                try {
+                    serverPrize = await window.fishGoldShop.spinWheel();
+                } catch (err) {
+                    if (err && err.code === 'already_claimed') {
+                        sm.markWheelSpin(); // sync local view with the server
+                        updateWheelUI();
+                    }
+                    alert((err && err.message) || 'Spin failed — try again.');
+                    return;
+                }
             }
 
             // Consume the spin up-front so refreshing mid-spin can't reroll it.
@@ -803,7 +843,11 @@
             btn.disabled = true;
 
             const extraSpins = 5 + Math.floor(Math.random() * 4);
-            const targetSector = Math.floor(Math.random() * window.WHEEL_SECTORS.length);
+            let targetSector = Math.floor(Math.random() * window.WHEEL_SECTORS.length);
+            if (serverPrize) {
+                const match = window.WHEEL_SECTORS.findIndex((sector) => sector.gold === serverPrize.amount);
+                if (match >= 0) targetSector = match;
+            }
             const arc = (Math.PI * 2) / window.WHEEL_SECTORS.length;
             // Align top pointer (-PI/2) with target sector center
             const targetAngle = extraSpins * Math.PI * 2 - Math.PI / 2 - (targetSector + 0.5) * arc;
@@ -829,16 +873,27 @@
                 } else {
                     isWheelSpinning = false;
                     const prize = window.WHEEL_SECTORS[targetSector];
-                    sm.addGold(prize.gold);
-                    updateMenuStats();
-                    updateWheelUI();
-                    window.soundEngine.playJackpot();
-
-                    const banner = document.getElementById('wheelRewardBanner');
-                    const text = document.getElementById('wheelRewardText');
-                    if (banner && text) {
-                        text.textContent = `+${prize.label}`;
-                        banner.classList.remove('hidden');
+                    if (serverPrize) {
+                        updateMenuStats();
+                        updateWheelUI();
+                        window.soundEngine.playJackpot();
+                        const banner = document.getElementById('wheelRewardBanner');
+                        const text = document.getElementById('wheelRewardText');
+                        if (banner && text) {
+                            text.textContent = `+${serverPrize.amount} $GOLD`;
+                            banner.classList.remove('hidden');
+                        }
+                    } else {
+                        sm.addGold(prize.gold);
+                        updateMenuStats();
+                        updateWheelUI();
+                        window.soundEngine.playJackpot();
+                        const banner = document.getElementById('wheelRewardBanner');
+                        const text = document.getElementById('wheelRewardText');
+                        if (banner && text) {
+                            text.textContent = `+${prize.label}`;
+                            banner.classList.remove('hidden');
+                        }
                     }
                 }
             }
@@ -1058,6 +1113,13 @@
 
                     const card = document.createElement('div');
                     card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
+                    const buyFishBtn = isEquipped
+                        ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
+                        : isUnlocked
+                            ? `<button class="item-btn btn-equip" onclick="equipFish('${item.id}')">EQUIP</button>`
+                            : (window.fishGoldShop && window.fishGoldShop.enabled())
+                                ? goldButton('fish', item.id)
+                                : `<button class="item-btn btn-buy" onclick="buyFish('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`;
                     card.innerHTML = `
                         <div class="item-preview" style="border: 2px solid ${item.finColor}; display: flex; align-items: center; justify-content: center; gap: 8px; background: rgba(0,0,0,0.25);">
                             <span style="font-size: 1.8rem;">${icon}</span>
@@ -1066,12 +1128,7 @@
                         <div class="item-name">${item.name}</div>
                         <div class="item-desc">${item.desc}</div>
                         <div class="item-stats">⚡ Spd: ${item.stats.speed}x | 🔄 Turn: ${item.stats.turn}x | 💥 Boost: ${item.stats.boost}x</div>
-                        ${isEquipped 
-                            ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
-                            : isUnlocked 
-                                ? `<button class="item-btn btn-equip" onclick="equipFish('${item.id}')">EQUIP</button>`
-                                : `<button class="item-btn btn-buy" onclick="buyFish('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>${goldButton('fish', item.id)}`
-                        }
+                        ${buyFishBtn}
                     `;
                     container.appendChild(card);
                 });
@@ -1084,6 +1141,13 @@
 
                     const card = document.createElement('div');
                     card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
+                    const buyWeaponBtn = isEquipped
+                        ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
+                        : isUnlocked
+                            ? `<button class="item-btn btn-equip" onclick="equipWeapon('${item.id}')">EQUIP</button>`
+                            : (window.fishGoldShop && window.fishGoldShop.enabled())
+                                ? goldButton('weapon', item.id)
+                                : `<button class="item-btn btn-buy" onclick="buyWeapon('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`;
                     card.innerHTML = `
                         <div class="item-preview" style="border: 2px solid ${item.glowColor}; background: rgba(0,0,0,0.25);">
                             <span class="item-icon-slot" data-cat="weapon" data-id="${item.id}">${icon}</span>
@@ -1091,12 +1155,7 @@
                         <div class="item-name">${item.name}</div>
                         <div class="item-desc">${item.desc}</div>
                         <div class="item-stats">🗡️ Reach: ${item.lengthMult}x | 📐 Width: ${item.widthMult}x</div>
-                        ${isEquipped 
-                            ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
-                            : isUnlocked 
-                                ? `<button class="item-btn btn-equip" onclick="equipWeapon('${item.id}')">EQUIP</button>`
-                                : `<button class="item-btn btn-buy" onclick="buyWeapon('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>${goldButton('weapon', item.id)}`
-                        }
+                        ${buyWeaponBtn}
                     `;
                     container.appendChild(card);
                 });
@@ -1109,6 +1168,13 @@
 
                     const card = document.createElement('div');
                     card.className = `shop-item-card ${isEquipped ? 'equipped' : ''}`;
+                    const buyHatBtn = isEquipped
+                        ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
+                        : isUnlocked
+                            ? `<button class="item-btn btn-equip" onclick="equipHat('${item.id}')">EQUIP</button>`
+                            : (window.fishGoldShop && window.fishGoldShop.enabled())
+                                ? goldButton('hat', item.id)
+                                : `<button class="item-btn btn-buy" onclick="buyHat('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>`;
                     card.innerHTML = `
                         <div class="item-preview" style="background: rgba(0,0,0,0.25);">
                             <span class="item-icon-slot" data-cat="hat" data-id="${item.id}">${icon}</span>
@@ -1116,21 +1182,25 @@
                         <div class="item-name">${item.name}</div>
                         <div class="item-desc">${item.desc}</div>
                         <div class="item-stats">Cosmetic Accessory</div>
-                        ${isEquipped 
-                            ? `<button class="item-btn btn-equipped">EQUIPPED</button>`
-                            : isUnlocked 
-                                ? `<button class="item-btn btn-equip" onclick="equipHat('${item.id}')">EQUIP</button>`
-                                : `<button class="item-btn btn-buy" onclick="buyHat('${item.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>BUY (${item.cost} 💰)</button>${goldButton('hat', item.id)}`
-                        }
+                        ${buyHatBtn}
                     `;
                     container.appendChild(card);
                 });
             } else if (currentShopTab === 'upgrades') {
+                const goldMode = Boolean(window.fishGoldShop && window.fishGoldShop.enabled());
                 Object.values(window.WORKSHOP_UPGRADES).forEach(upg => {
                     const curLvl = sm.upgrades[upg.id] || 0;
                     const isMax = (curLvl >= upg.maxLevel);
                     const cost = isMax ? 0 : Math.round(upg.baseCost * Math.pow(upg.costMult, curLvl));
                     const canAfford = (sm.gold >= cost);
+                    const goldInfo = goldMode && window.fishGoldShop.upgradeInfo
+                        ? window.fishGoldShop.upgradeInfo(upg.id, curLvl)
+                        : null;
+                    const upgradeBtn = isMax
+                        ? `<button class="item-btn btn-equipped">MAX LEVEL</button>`
+                        : goldMode
+                            ? (goldInfo ? `<button class="item-btn btn-gold-buy" onclick="buyUpgradeWithGold('${upg.id}')">⛓ UPGRADE (${goldInfo.price} $GOLD)</button>` : '')
+                            : `<button class="item-btn btn-buy" onclick="buyWorkshopUpgrade('${upg.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>UPGRADE (${cost} 💰)</button>`;
 
                     const card = document.createElement('div');
                     card.className = `shop-item-card`;
@@ -1141,10 +1211,7 @@
                         <div class="item-name">${upg.name}</div>
                         <div class="item-desc">${upg.desc}</div>
                         <div class="item-stats">Current Level: ${curLvl} / ${upg.maxLevel}</div>
-                        ${isMax 
-                            ? `<button class="item-btn btn-equipped">MAX LEVEL</button>`
-                            : `<button class="item-btn btn-buy" onclick="buyWorkshopUpgrade('${upg.id}')" ${!canAfford ? 'style="opacity:0.6;"' : ''}>UPGRADE (${cost} 💰)</button>`
-                        }
+                        ${upgradeBtn}
                     `;
                     container.appendChild(card);
                 });
@@ -1171,7 +1238,7 @@
             }
         }
 
-        // ---- $GOLD shop (on-chain cosmetics) ----
+        // ---- $GOLD shop (server ledger) ----
         function goldButton(type, id) {
             const shop = window.fishGoldShop;
             if (!shop || !shop.enabled()) return '';
@@ -1186,27 +1253,49 @@
             const price = shop.priceFor(type, id);
             const catalog = type === 'fish' ? window.FISH_SKINS : type === 'weapon' ? window.WEAPON_SKINS : window.FISH_HATS;
             const name = (catalog && catalog[id] && catalog[id].name) || id;
-            if (!window.confirm(`Buy ${name} for ${price} $GOLD?\n\nThe token is transferred from your in-game Hedera wallet and the item unlocks on every device.`)) return;
+            if (!window.confirm(`Buy ${name} for ${price} $GOLD?\n\n${price} $GOLD is deducted from your in-game balance.`)) return;
             try {
                 const result = await shop.purchase(type, id);
                 renderShopItems();
                 updateMenuStats();
                 updatePreviewFish();
                 if (window.soundEngine) window.soundEngine.playLevelUp();
-                const tx = result && result.receipt ? result.receipt.transactionId : '';
-                if (window.fishToast) window.fishToast(`⛓ ${name} unlocked! Tx ${String(tx).slice(0, 16)}…`);
+                if (window.fishToast) window.fishToast(`⛓ ${name} unlocked! Balance: ${result.balance} $GOLD`);
             } catch (err) {
                 const code = err && err.code;
                 if (code === 'insufficient_gold') {
-                    alert('Not enough $GOLD in your wallet.\n\nOpen the account panel and claim your pending match rewards first.');
+                    alert(`Not enough $GOLD — ${name} costs ${price} $GOLD. Earn more from matches, dailies or the wheel.`);
                 } else if (code === 'already_owned') {
                     renderShopItems();
-                } else if (code === 'external_wallet') {
-                    alert('Purchases with $GOLD currently use your in-game wallet. Unlink your external wallet to use it.');
-                } else if (code === 'purchase_in_progress') {
-                    alert('A purchase is already being processed — give it a few seconds.');
                 } else {
                     alert(`Purchase failed: ${(err && err.message) || 'try again'}`);
+                }
+            }
+        }
+
+        async function buyUpgradeWithGold(id) {
+            const shop = window.fishGoldShop;
+            const sm = window.shopManager;
+            if (!shop || !sm) return;
+            const upg = window.WORKSHOP_UPGRADES[id];
+            const info = shop.upgradeInfo ? shop.upgradeInfo(id, sm.upgrades[id] || 0) : null;
+            if (!upg || !info) return;
+            if (!window.confirm(`Upgrade ${upg.name} to level ${info.level + 1} for ${info.price} $GOLD?`)) return;
+            try {
+                const result = await shop.purchaseUpgrade(id);
+                renderShopItems();
+                updateMenuStats();
+                updatePreviewFish();
+                if (window.soundEngine) window.soundEngine.playLevelUp();
+                if (window.fishToast) window.fishToast(`⛓ ${upg.name} → Lv.${result.level} (balance ${result.balance} $GOLD)`);
+            } catch (err) {
+                const code = err && err.code;
+                if (code === 'insufficient_gold') {
+                    alert(`Not enough $GOLD — this upgrade costs ${info.price}.`);
+                } else if (code === 'max_level') {
+                    renderShopItems();
+                } else {
+                    alert(`Upgrade failed: ${(err && err.message) || 'try again'}`);
                 }
             }
         }
