@@ -12,8 +12,11 @@
 (function () {
   'use strict';
 
-  // Production backend (VPS behind Caddy, see deploy/README.md).
-  window.FISHIO_API_BASE = 'https://api.69-62-81-172.sslip.io';
+  // Same-origin API through the Vercel proxy (/api/* → VPS API). First-party
+  // cookies mean sign-in survives browser restarts and strict privacy settings.
+  window.FISHIO_API_BASE = '';
+
+  // The arena is a WebSocket on the VPS (Caddy TLS).
   window.FISHIO_ROOM_URL = 'wss://room.69-62-81-172.sslip.io';
 
   try {

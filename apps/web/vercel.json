@@ -1,6 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://api.69-62-81-172.sslip.io/api/:path*"
+    }
+  ],
   "headers": [
     {
       "source": "/vendor/(.*)",
