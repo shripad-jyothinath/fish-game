@@ -15,7 +15,7 @@ import { openDatabase, type NftItemRow } from '../src/db.ts';
 import { loadDotEnv } from '../src/env.ts';
 import { decodeMemo, MirrorClient } from '../src/hedera/mirror.ts';
 import { calculateGoldReward, RewardService } from '../src/hedera/rewards.ts';
-import { findGoldShopItem, goldPriceFor, goldShop } from '../src/hedera/shop.ts';
+import { findGoldShopItem, goldShop, priceForRank } from '../src/hedera/shop.ts';
 import { signInternalBody, signRoomTicket, verifyRoomTicket } from '../src/hedera/tickets.ts';
 import { isValidHederaAccountId, stripChecksum, verifyMessageSignature, WalletService } from '../src/hedera/wallet.ts';
 import { buildServer } from '../src/index.ts';
@@ -224,21 +224,29 @@ test('limited editions reserve atomically and free slots on failure', () => {
   store.close();
 });
 
-test('$GOLD shop prices compress gold costs into bands', () => {
-  assert.equal(goldPriceFor(0), null, 'free items are not for sale');
-  assert.equal(goldPriceFor(500), 2);
-  assert.equal(goldPriceFor(1_000), 5);
-  assert.equal(goldPriceFor(7_000), 12);
-  assert.equal(goldPriceFor(30_000), 30);
-  assert.equal(goldPriceFor(250_000), 80);
-  assert.equal(goldPriceFor(8_000_000), 200);
+test('$GOLD shop prices follow the progression curve', () => {
+  assert.equal(priceForRank(0, 24, 10, 600), 10);
+  assert.equal(priceForRank(23, 24, 10, 600), 600);
+  assert.equal(priceForRank(0, 23, 10, 2500), 10);
+  assert.equal(priceForRank(22, 23, 10, 2500), 2500);
 
   const { items } = goldShop();
-  assert.ok(items.length > 30, `catalog has sellable items (${items.length})`);
+  assert.ok(items.length > 50, `catalog has sellable items (${items.length})`);
   for (const item of items) {
-    assert.ok(item.priceGold >= 2 && item.priceGold <= 200, `${item.type}:${item.id} in price range`);
-    assert.ok(item.costGold > 0, `${item.type}:${item.id} has a real gold cost`);
+    assert.ok(item.priceGold >= 5 && item.priceGold <= 5000, `${item.type}:${item.id} in price range`);
+    assert.ok(item.costGold > 0, `${item.type}:${item.id} has a real legacy cost`);
   }
+
+  for (const type of ['fish', 'weapon', 'hat']) {
+    const prices = items.filter((item) => item.type === type).map((item) => item.priceGold);
+    assert.equal(prices[0], 10, `${type} entry price`);
+    for (let i = 1; i < prices.length; i++) {
+      assert.ok(prices[i]! >= prices[i - 1]!, `${type} prices are monotonic`);
+    }
+  }
+
+  const topFish = items.filter((item) => item.type === 'fish').at(-1);
+  assert.equal(topFish?.priceGold, 2500, 'top fish is a long-term goal');
 
   const weapon = items.find((item) => item.type === 'weapon');
   assert.ok(weapon, 'weapons are sellable');

@@ -1,9 +1,12 @@
 /**
  * $GOLD shop: server-side price book for cosmetics purchased with the on-chain
  * token. Prices come from the real game catalog (game-core) so they can never
- * drift from what the client shows: raw gold costs are compressed into $GOLD
- * bands, because end-game items cost millions of 💰 but rewards pay ~10–100
- * $GOLD per match.
+ * drift from what the client shows.
+ *
+ * Pricing: items keep their original progression order (legacy gold cost), and
+ * each category gets an exponential curve from `start` to `end` rounded to a
+ * friendly ladder. Rewards pay ~10–100 $GOLD per match, so the top fish is a
+ * long-term goal, not a weekend purchase.
  */
 import { loadGame, type GameCatalog } from '@fishio/game-core';
 
@@ -13,32 +16,35 @@ export interface GoldShopItem {
   type: GoldShopItemType;
   id: string;
   name: string;
-  /** In-game 💰 price (for reference in the UI). */
+  /** Legacy in-game 💰 price (kept for reference/tests only). */
   costGold: number;
   /** $GOLD price, whole token units. */
   priceGold: number;
 }
 
-/**
- * Cost bands → $GOLD price. Deliberately super-linear: late-game items are a
- * flex, not a shortcut. Tune here (and in the UI copy) as the economy evolves.
- */
-const PRICE_BANDS: ReadonlyArray<readonly [minCost: number, priceGold: number]> = [
-  [1_000_000, 200],
-  [100_000, 80],
-  [20_000, 30],
-  [5_000, 12],
-  [1_000, 5],
-  [1, 2],
+const PRICE_LADDER = [
+  5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
+  600, 700, 800, 900, 1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000, 5000,
 ];
 
-/** $GOLD price for an item that costs `costGold` in-game; null = not for sale. */
-export function goldPriceFor(costGold: number): number | null {
-  if (!Number.isFinite(costGold) || costGold <= 0) return null;
-  for (const [minCost, priceGold] of PRICE_BANDS) {
-    if (costGold >= minCost) return priceGold;
+const CATEGORY_CURVE: Record<GoldShopItemType, { start: number; end: number }> = {
+  weapon: { start: 10, end: 600 },
+  fish: { start: 10, end: 2500 },
+  hat: { start: 10, end: 150 },
+};
+
+function roundLadder(value: number): number {
+  let best = PRICE_LADDER[0]!;
+  for (const step of PRICE_LADDER) {
+    if (Math.abs(step - value) < Math.abs(best - value)) best = step;
   }
-  return null;
+  return best;
+}
+
+/** Exponential progression between `start` and `end` for rank `index` of `total`. */
+export function priceForRank(index: number, total: number, start: number, end: number): number {
+  const t = total <= 1 ? 1 : index / (total - 1);
+  return roundLadder(start * Math.pow(end / start, t));
 }
 
 interface GoldShopCatalog {
@@ -56,13 +62,24 @@ export function goldShop(): GoldShopCatalog {
   const items: GoldShopItem[] = [];
 
   const collect = (type: GoldShopItemType, table: Record<string, unknown>) => {
-    for (const [id, raw] of Object.entries(table ?? {})) {
-      const entry = (raw ?? {}) as { cost?: unknown; name?: unknown };
-      const cost = Number(entry.cost ?? 0);
-      const priceGold = goldPriceFor(cost);
-      if (priceGold == null) continue; // free/default items are not for sale
-      items.push({ type, id, name: String(entry.name ?? id), costGold: cost, priceGold });
-    }
+    const entries = Object.entries(table ?? {})
+      .map(([id, raw]) => {
+        const entry = (raw ?? {}) as { cost?: unknown; name?: unknown };
+        return { id, name: String(entry.name ?? id), cost: Number(entry.cost ?? 0) };
+      })
+      .filter((entry) => Number.isFinite(entry.cost) && entry.cost > 0)
+      .sort((a, b) => a.cost - b.cost);
+
+    const curve = CATEGORY_CURVE[type];
+    entries.forEach((entry, index) => {
+      items.push({
+        type,
+        id: entry.id,
+        name: entry.name,
+        costGold: entry.cost,
+        priceGold: priceForRank(index, entries.length, curve.start, curve.end),
+      });
+    });
   };
 
   collect('fish', catalog.fishSkins);
