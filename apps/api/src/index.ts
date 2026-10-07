@@ -91,7 +91,10 @@ export function buildServer(config: ApiConfig): FastifyInstance {
       }
     },
   });
-  const requireUser = makeAuthGuard(store);
+  const requireUser = makeAuthGuard(store, {
+    secure: config.nodeEnv === 'production',
+    crossSite: config.webOrigins.length > 0,
+  });
   registerSaveRoutes(app, store, requireUser);
 
   // --- Matches, $GOLD, shop, tickets, internal intake, leaderboard ----------

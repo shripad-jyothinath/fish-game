@@ -9,7 +9,9 @@ import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from
 import type { Store, UserRow } from './db.ts';
 
 export const SESSION_COOKIE = 'fishio_session';
-const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** Sliding renewal: sessions older than this get their 30-day window extended. */
+const SESSION_RENEW_AFTER_MS = 24 * 60 * 60 * 1000;
 
 const SCRYPT_N = 16384;
 const SCRYPT_R = 8;
@@ -93,15 +95,19 @@ function setSessionCookie(reply: FastifyReply, token: string, secure: boolean, c
 }
 
 /** preHandler that resolves the session cookie into req.user or replies 401. */
-export function makeAuthGuard(store: Store): AuthGuard {
+export function makeAuthGuard(
+  store: Store,
+  cookieOptions: { secure: boolean; crossSite: boolean } = { secure: true, crossSite: false },
+): AuthGuard {
   return async function requireUser(req, reply) {
     const token = req.cookies?.[SESSION_COOKIE];
     if (!token) {
       return reply.code(401).send({ error: { code: 'unauthorized', message: 'Sign in required.' } });
     }
     const tokenHash = sha256(token);
+    const now = Date.now();
     const session = store.findSession(tokenHash);
-    if (!session || session.expires_at <= Date.now()) {
+    if (!session || session.expires_at <= now) {
       if (session) store.deleteSession(tokenHash);
       return reply.code(401).send({ error: { code: 'unauthorized', message: 'Session expired. Sign in again.' } });
     }
@@ -110,6 +116,14 @@ export function makeAuthGuard(store: Store): AuthGuard {
       store.deleteSession(tokenHash);
       return reply.code(401).send({ error: { code: 'unauthorized', message: 'Sign in required.' } });
     }
+
+    // Sliding sessions: as long as you come back at least once a month, the
+    // 30-day window keeps rolling forward (renew at most once per day).
+    if (session.expires_at - now < SESSION_TTL_MS - SESSION_RENEW_AFTER_MS) {
+      store.extendSession(tokenHash, now + SESSION_TTL_MS);
+      setSessionCookie(reply, token, cookieOptions.secure, cookieOptions.crossSite);
+    }
+
     req.user = toPublicUser(user);
     req.sessionTokenHash = tokenHash;
     return undefined;

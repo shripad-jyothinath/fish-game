@@ -184,6 +184,7 @@ export function openDatabase(dbPath: string) {
     ),
     sessionByHash: db.prepare('SELECT * FROM sessions WHERE token_hash = ?'),
     deleteSession: db.prepare('DELETE FROM sessions WHERE token_hash = ?'),
+    extendSessionStmt: db.prepare('UPDATE sessions SET expires_at = ? WHERE token_hash = ?'),
     deleteExpiredSessions: db.prepare('DELETE FROM sessions WHERE expires_at <= ?'),
     saveByUser: db.prepare('SELECT * FROM saves WHERE user_id = ?'),
     upsertSave: db.prepare(
@@ -340,6 +341,9 @@ export function openDatabase(dbPath: string) {
     },
     deleteSession(tokenHash: string): void {
       stmts.deleteSession.run(tokenHash);
+    },
+    extendSession(tokenHash: string, expiresAt: number): void {
+      stmts.extendSessionStmt.run(expiresAt, tokenHash);
     },
     purgeExpiredSessions(now: number): void {
       stmts.deleteExpiredSessions.run(now);
