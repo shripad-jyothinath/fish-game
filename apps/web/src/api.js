@@ -48,6 +48,7 @@
             );
             error.status = res.status;
             error.code = isApiError ? data.error.code : 'unknown';
+            if (data && typeof data.retryAfterMs === 'number') error.retryAfterMs = data.retryAfterMs;
             throw error;
         }
         return data;
@@ -309,7 +310,7 @@
             html = '<span class="hedera-badge muted">⛓ Hedera</span> testnet not configured yet — match saved to your account';
         }
         if (payload && payload.reward && payload.reward.amount > 0) {
-            html += ` · 🪙 +${payload.reward.amount} $GOLD pending`;
+            html += ` · 🪙 +${payload.reward.amount} $GOLD credited`;
         }
         return html;
     }
@@ -328,8 +329,8 @@
         }
 
         target.textContent = '⛓ Recording match on Hedera…';
-        try {
-            const payload = await request('/api/v1/matches', {
+        const submit = () =>
+            request('/api/v1/matches', {
                 method: 'POST',
                 body: {
                     mode: stats.mode,
@@ -343,6 +344,21 @@
                     durationMs: Math.round((stats.matchTime || 0) * 1000),
                 },
             });
+        try {
+            let payload;
+            try {
+                payload = await submit();
+            } catch (err) {
+                // Short per-account cooldown: wait it out and retry once.
+                if (err && err.code === 'match_cooldown') {
+                    const waitMs = Math.min(6000, Math.max(600, Number(err.retryAfterMs) || 1500)) + 150;
+                    target.textContent = `⛓ Recording match… retrying in ${(waitMs / 1000).toFixed(1)}s`;
+                    await new Promise((done) => setTimeout(done, waitMs));
+                    payload = await submit();
+                } else {
+                    throw err;
+                }
+            }
             target.innerHTML = receiptFooter(payload);
             if (stats.source === 'stage' && stats.stageLevel) {
                 try {
@@ -356,7 +372,11 @@
                 }
             }
         } catch (err) {
-            target.innerHTML = `<span class="hedera-badge warn">⛓ Hedera</span> could not record match (${escapeHtml(err.message)})`;
+            const friendly =
+                err && err.code === 'match_cooldown'
+                    ? 'match not recorded (rate limited) — play again in a few seconds'
+                    : `could not record match (${escapeHtml(err.message)})`;
+            target.innerHTML = `<span class="hedera-badge warn">⛓ Hedera</span> ${friendly}`;
         }
     }
 
@@ -412,6 +432,12 @@
         html += `<div class="hedera-head"><span class="hedera-badge">⛓ Hedera</span><span class="hedera-status ${online ? 'on' : 'off'}">${statusLabel}</span></div>`;
         html += `<div class="hedera-row"><span>$GOLD balance</span><span><b>${bal == null ? '—' : bal}</b> in-game${walletBal != null ? ` · <b>${walletBal}</b> wallet` : ''}</span></div>`;
         html += `<div class="hedera-row"><span>All time</span><span>${earned} earned · ${withdrawn} withdrawn</span></div>`;
+        const powerInfo = gold && gold.powerBreakdown ? gold.powerBreakdown : null;
+        const powerValue = gold && typeof gold.power === 'number' ? gold.power : 0;
+        html += `<div class="hedera-row"><span>Combat power</span><span><b>⚡ ${powerValue}</b></span></div>`;
+        if (powerInfo) {
+            html += `<div class="hedera-muted">Weapon T${powerInfo.weaponTier} · Fish T${powerInfo.fishTier} · Upgrades ${powerInfo.upgradeLevels} · Best Lv.${powerInfo.bestLevel}</div>`;
+        }
 
         if (online && gold && gold.enabled) {
             html += `<div class="hedera-actions">
@@ -456,7 +482,7 @@
                 <input class="hedera-input" id="hederaAccountInput" placeholder="0.0.yourAccount">
                 <button class="hedera-btn primary" onclick="fishStartLink()">Link wallet</button>
             </div>
-            <div class="hedera-muted">Linking is free (1 tinybar testnet transfer). $GOLD rewards accrue until you claim.</div>`;
+            <div class="hedera-muted">Linking is free (1 tinybar testnet transfer). Earn $GOLD from matches, then spend or withdraw it from your balance.</div>`;
         }
 
         const editions = nfts && nfts.editions ? nfts.editions : {};
@@ -589,28 +615,51 @@
         }
     }
 
-    // ===== global leaderboard =====
-    async function openLeaderboard() {
+    // ===== leaderboards (score | gold | power) =====
+    async function openLeaderboard(type = 'score') {
         const modal = document.getElementById('leaderboardModal');
         if (!modal) return;
         modal.classList.remove('hidden');
+        for (const [id, value] of [['lbTabScore', 'score'], ['lbTabGold', 'gold'], ['lbTabPower', 'power']]) {
+            const el = document.getElementById(id);
+            if (el) el.classList.toggle('active', value === type);
+        }
         const body = document.getElementById('leaderboardBody');
         if (!body) return;
         body.innerHTML = '<div class="lb-empty">Loading…</div>';
         try {
-            const data = await request('/api/v1/leaderboard');
+            const data = await request(`/api/v1/leaderboard?type=${type}`);
             if (!data.entries || data.entries.length === 0) {
-                body.innerHTML = '<div class="lb-empty">No matches recorded yet — be the first!</div>';
+                body.innerHTML = '<div class="lb-empty">Nothing here yet — be the first!</div>';
                 return;
             }
             body.innerHTML = data.entries.map((entry) => {
+                const rank = `<span class="glb-rank">#${entry.rank}</span>`;
+                const name = `<span class="glb-name">${escapeHtml(entry.username)}</span>`;
+                if (type === 'gold') {
+                    return `<div class="glb-row">
+                        ${rank}${name}
+                        <span class="glb-score">${entry.gold} 🪙</span>
+                        <span class="glb-kills">⚡ ${entry.power}</span>
+                        <span class="glb-matches">Lv.${entry.bestLevel}</span>
+                        <span class="glb-link"><span class="glb-receipt muted">—</span></span>
+                    </div>`;
+                }
+                if (type === 'power') {
+                    return `<div class="glb-row">
+                        ${rank}${name}
+                        <span class="glb-score">⚡ ${entry.power}</span>
+                        <span class="glb-kills">Lv.${entry.bestLevel}</span>
+                        <span class="glb-matches">${entry.kills} 🎯</span>
+                        <span class="glb-link"><span class="glb-receipt muted">—</span></span>
+                    </div>`;
+                }
                 const receipt = entry.receiptUrl
                     ? `<a class="glb-receipt" href="${escapeHtml(entry.receiptUrl)}" target="_blank" rel="noopener" title="Hedera receipt">⛓</a>`
                     : '<span class="glb-receipt muted">—</span>';
                 return `<div class="glb-row">
-                    <span class="glb-rank">#${entry.rank}</span>
-                    <span class="glb-name">${escapeHtml(entry.username)}</span>
-                    <span class="glb-score">${entry.score}</span>
+                    ${rank}${name}
+                    <span class="glb-score">${entry.score} <small style="opacity:.6">⚡${entry.power || 0}</small></span>
                     <span class="glb-kills">${entry.kills} 🎯</span>
                     <span class="glb-matches">${entry.matches} 🎮</span>
                     <span class="glb-link">${receipt}</span>
@@ -697,6 +746,8 @@
 
     /** Menu/shop balances show $GOLD when signed in; practice 💰 for guests. */
     function applyGoldLabels() {
+        const powerEl = document.getElementById('menuPower');
+        if (powerEl) powerEl.textContent = currentUser && goldWallet ? String(goldWallet.power ?? 0) : '—';
         if (!currentUser) return;
         const bal = goldBalance();
         const text = `⛓ ${bal == null ? '…' : bal} $GOLD`;

@@ -191,3 +191,33 @@ test('kill rewards scale with the killer level', () => {
   assert.ok(gain1 >= 24, `level-1 kill pays at least the base bounty (${gain1})`);
   assert.ok(gain2 > gain1 * 2, `high-level kills pay substantially more (${gain1} → ${gain2})`);
 });
+
+test('bots keep their species while upgrading weapons mid-match', () => {
+  const h = loadGame({ seed: 21 });
+  const g = h.createGame();
+  g.startMatch('classic');
+  const cat = h.catalog();
+  const tierOf = (id) => {
+    for (let i = 0; i < cat.weaponTiers.length; i++) {
+      if (cat.weaponTiers[i].includes(id)) return i;
+    }
+    return 0;
+  };
+
+  const bot = g.bots[0];
+  const speciesBefore = bot.skinId;
+  const weaponBefore = bot.weaponId;
+
+  // Force the league-up path: high tier cap + a leveled bot due for gear.
+  g.player.level = 11;
+  g.matchTime = 200;
+  bot.level = 6;
+  bot.gearUpLevel = 3;
+  g.updateBotGear(100);
+
+  assert.equal(bot.skinId, speciesBefore, 'species must not change mid-match');
+  assert.ok(
+    tierOf(bot.weaponId) >= 1,
+    `weapon upgrades instead (${weaponBefore} -> ${bot.weaponId})`,
+  );
+});

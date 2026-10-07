@@ -27,6 +27,7 @@ import { randomUUID } from 'node:crypto';
 import type { AuthGuard } from '../auth.ts';
 import { verifyPassword } from '../auth.ts';
 import type { EntitlementRow, NftItemRow, Store } from '../db.ts';
+import { computePower, refreshPower, type PowerBreakdown } from '../power.ts';
 import { hashscanNftUrl, hashscanTxUrl } from './config.ts';
 import type { MatchStats } from './rewards.ts';
 import type { HederaServices } from './services.ts';
@@ -175,7 +176,7 @@ export function registerHederaRoutes(
     nftCollectionId:
       settings.nftCollectionId || store.getHederaResource(settings.network, 'nft_collection')?.resource_id || null,
     gold: { name: settings.goldName, symbol: settings.goldSymbol, decimals: settings.goldDecimals },
-    rewards: { dailyCap: settings.rewardDailyCap, matchCap: settings.rewardMatchCap },
+    rewards: { mode: 'uncapped', note: 'rewards scale with score, kills and level' },
     autoWallets: Boolean(services.custody),
     walletLink: {
       method: 'transfer',
@@ -205,7 +206,11 @@ export function registerHederaRoutes(
       return reply.code(201).send(result);
     } catch (err) {
       if ((err as { code?: string }).code === 'match_cooldown') {
-        return reply.code(429).send(errorBody('match_cooldown', (err as Error).message));
+        const retryAfterMs = (err as { retryAfterMs?: number }).retryAfterMs ?? 0;
+        return reply.code(429).send({
+          error: { code: 'match_cooldown', message: (err as Error).message },
+          retryAfterMs: Math.max(0, Math.round(retryAfterMs)),
+        });
       }
       throw err;
     }
@@ -240,18 +245,46 @@ export function registerHederaRoutes(
   });
 
   // ---------------------------------------------------------------- leaderboard
-  app.get('/api/v1/leaderboard', async () => {
+  // type=score (default) | gold | power
+  app.get('/api/v1/leaderboard', async (req) => {
+    const query = req.query as { type?: string };
+    const type = query.type === 'gold' ? 'gold' : query.type === 'power' ? 'power' : 'score';
+
+    if (type === 'gold') {
+      const entries = store.listGoldLeaderboard(50).map((row, index) => ({
+        rank: index + 1,
+        username: row.username,
+        gold: row.gold,
+        power: row.power ?? 0,
+        bestLevel: row.best_level ?? 1,
+        lastPlayedAt: row.updated_at,
+      }));
+      return { season: null, network: settings.network, online: services.online, type, entries };
+    }
+    if (type === 'power') {
+      const entries = store.listPowerLeaderboard(50).map((row, index) => ({
+        rank: index + 1,
+        username: row.username,
+        power: row.power,
+        bestLevel: row.best_level,
+        score: row.high_score,
+        kills: row.total_kills,
+        lastPlayedAt: row.updated_at,
+      }));
+      return { season: null, network: settings.network, online: services.online, type, entries };
+    }
     const entries = store.listLeaderboard(50).map((row, index) => ({
       rank: index + 1,
       username: row.username,
       score: row.best_score,
       kills: row.total_kills,
       matches: row.matches_played,
+      power: row.power ?? 0,
       mode: row.mode ?? 'classic',
       lastPlayedAt: row.last_played_at,
       receiptUrl: row.hcs_tx_id ? hashscanTxUrl(settings, row.hcs_tx_id) : null,
     }));
-    return { season: null, network: settings.network, online: services.online, entries };
+    return { season: null, network: settings.network, online: services.online, type, entries };
   });
 
   // ---------------------------------------------------------------- wallet link
@@ -368,9 +401,17 @@ export function registerHederaRoutes(
         walletBalance = null; // mirror hiccup: the rest of the response is still useful
       }
     }
+    let power: PowerBreakdown | null = null;
+    try {
+      power = computePower(store, user.id);
+    } catch {
+      power = null;
+    }
     return {
       enabled: services.online,
       network: settings.network,
+      power: power?.power ?? 0,
+      powerBreakdown: power,
       tokenId,
       symbol: settings.goldSymbol,
       decimals: settings.goldDecimals,
@@ -572,7 +613,11 @@ export function registerHederaRoutes(
     } catch (err) {
       const code = (err as { code?: string }).code;
       if (code === 'match_cooldown') {
-        return reply.code(429).send(errorBody('match_cooldown', (err as Error).message));
+        const retryAfterMs = (err as { retryAfterMs?: number }).retryAfterMs ?? 0;
+        return reply.code(429).send({
+          error: { code: 'match_cooldown', message: (err as Error).message },
+          retryAfterMs: Math.max(0, Math.round(retryAfterMs)),
+        });
       }
       app.log.error({ err, userId: user.id }, 'internal match intake failed');
       return reply.code(500).send(errorBody('record_failed', 'Could not record the match.'));
@@ -679,11 +724,19 @@ export function registerHederaRoutes(
         level: result.level,
       });
     }
+    const power = (() => {
+      try {
+        return refreshPower(store, user.id);
+      } catch {
+        return undefined;
+      }
+    })();
     return {
       id,
       level: result.level,
       price: result.price,
       balance: store.goldBalance(user.id),
+      power,
     };
   });
 

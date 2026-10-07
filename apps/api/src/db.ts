@@ -103,6 +103,36 @@ export interface LeaderboardRow {
   last_played_at: number;
   mode: string | null;
   hcs_tx_id: string | null;
+  power: number | null;
+}
+
+export interface PlayerStatsRow {
+  user_id: string;
+  matches_played: number;
+  total_kills: number;
+  total_food: number;
+  high_score: number;
+  best_level: number;
+  total_king_time: number;
+  power: number;
+  updated_at: number;
+}
+
+export interface GoldLeaderboardRow {
+  username: string;
+  gold: number;
+  power: number | null;
+  best_level: number | null;
+  updated_at: number | null;
+}
+
+export interface PowerLeaderboardRow {
+  username: string;
+  power: number;
+  best_level: number;
+  high_score: number;
+  total_kills: number;
+  updated_at: number;
 }
 
 export interface PayoutClaimRow {
@@ -172,6 +202,12 @@ export function openDatabase(dbPath: string) {
   db.pragma('foreign_keys = ON');
   db.exec(fs.readFileSync(SCHEMA_PATH, 'utf8'));
 
+  // Tiny forward-only migrations for databases created by older versions.
+  const playerStatColumns = db.prepare('PRAGMA table_info(player_stats)').all() as Array<{ name: string }>;
+  if (!playerStatColumns.some((column) => column.name === 'power')) {
+    db.exec('ALTER TABLE player_stats ADD COLUMN power INTEGER NOT NULL DEFAULT 0');
+  }
+
   const stmts = {
     insertUser: db.prepare(
       `INSERT INTO users (id, email, username, username_lower, password_hash, created_at, last_login_at)
@@ -238,12 +274,32 @@ export function openDatabase(dbPath: string) {
     ),
     leaderboard: db.prepare(
       `SELECT s.user_id, u.username, s.high_score AS best_score, s.total_kills, s.matches_played,
-              s.updated_at AS last_played_at,
+              s.updated_at AS last_played_at, s.power AS power,
               (SELECT m.mode FROM matches m WHERE m.user_id = s.user_id ORDER BY m.score DESC, m.created_at DESC LIMIT 1) AS mode,
               (SELECT m.hcs_tx_id FROM matches m WHERE m.user_id = s.user_id AND m.hcs_tx_id IS NOT NULL
                  ORDER BY m.score DESC LIMIT 1) AS hcs_tx_id
        FROM player_stats s JOIN users u ON u.id = s.user_id
        ORDER BY s.high_score DESC, s.updated_at ASC
+       LIMIT ?`,
+    ),
+    playerStatsStmt: db.prepare('SELECT * FROM player_stats WHERE user_id = ?'),
+    setPlayerPowerStmt: db.prepare('UPDATE player_stats SET power = ? WHERE user_id = ?'),
+    goldLeaderboard: db.prepare(
+      `SELECT u.username AS username,
+              COALESCE(SUM(l.delta), 0) AS gold,
+              s.power AS power, s.best_level AS best_level, s.updated_at AS updated_at
+       FROM users u
+       LEFT JOIN gold_ledger l ON l.user_id = u.id
+       LEFT JOIN player_stats s ON s.user_id = u.id
+       GROUP BY u.id
+       ORDER BY gold DESC, u.username ASC
+       LIMIT ?`,
+    ),
+    powerLeaderboard: db.prepare(
+      `SELECT u.username AS username, s.power AS power, s.best_level AS best_level,
+              s.high_score AS high_score, s.total_kills AS total_kills, s.updated_at AS updated_at
+       FROM player_stats s JOIN users u ON u.id = s.user_id
+       ORDER BY s.power DESC, s.high_score DESC
        LIMIT ?`,
     ),
 
@@ -438,6 +494,18 @@ export function openDatabase(dbPath: string) {
     },
     listLeaderboard(limit: number): LeaderboardRow[] {
       return stmts.leaderboard.all(limit) as LeaderboardRow[];
+    },
+    playerStats(userId: string): PlayerStatsRow | undefined {
+      return stmts.playerStatsStmt.get(userId) as PlayerStatsRow | undefined;
+    },
+    setPlayerPower(userId: string, power: number): void {
+      stmts.setPlayerPowerStmt.run(Math.max(0, Math.floor(power)), userId);
+    },
+    listGoldLeaderboard(limit: number): GoldLeaderboardRow[] {
+      return stmts.goldLeaderboard.all(limit) as GoldLeaderboardRow[];
+    },
+    listPowerLeaderboard(limit: number): PowerLeaderboardRow[] {
+      return stmts.powerLeaderboard.all(limit) as PowerLeaderboardRow[];
     },
 
     insertPayoutClaim(row: PayoutClaimRow): void {

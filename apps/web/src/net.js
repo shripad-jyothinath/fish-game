@@ -411,6 +411,29 @@
       return rec;
     }
 
+    /** Keep a remote fish's cosmetics in sync (they can change between lives). */
+    applyRemoteMeta(rec, state) {
+      const fish = rec.fish;
+      if (state.n && fish.name !== state.n) fish.name = state.n;
+      if (state.sk && fish.skinId !== state.sk) {
+        fish.skinId = state.sk;
+        fish.skin = window.FISH_SKINS[state.sk] || fish.skin;
+        fish.baseSpeed = 4.4 * ((fish.skin.stats && fish.skin.stats.speed) || 1.0);
+        fish.turnSpeed = 0.14 * ((fish.skin.stats && fish.skin.stats.turn) || 1.0);
+        fish.maxStamina = 100 * ((fish.skin.stats && fish.skin.stats.boost) || 1.0);
+        fish.updateDimensions();
+      }
+      if (state.w && fish.weaponId !== state.w) {
+        fish.weaponId = state.w;
+        fish.weapon = window.WEAPON_SKINS[state.w] || fish.weapon;
+        fish.updateDimensions();
+      }
+      if (state.h && fish.hatId !== state.h) {
+        fish.hatId = state.h;
+        fish.hat = window.FISH_HATS[state.h] || fish.hat;
+      }
+    }
+
     makeSample(state) {
       return {
         at: performance.now(),
@@ -462,6 +485,7 @@
         seen.add(state.id);
         if (state.id === this.playerId) continue;
         const rec = this.ensureRemote(state);
+        this.applyRemoteMeta(rec, state);
         if (rec.dead) {
           rec.dead = false;
           rec.fish.isDead = false;

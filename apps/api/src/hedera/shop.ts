@@ -3,10 +3,12 @@
  * token. Prices come from the real game catalog (game-core) so they can never
  * drift from what the client shows.
  *
- * Pricing: items keep their original progression order (legacy gold cost), and
- * each category gets an exponential curve from `start` to `end` rounded to a
- * friendly ladder. Rewards pay ~10–100 $GOLD per match, so the top fish is a
- * long-term goal, not a weekend purchase.
+ * Pricing is TIER-BASED (the game's own T0–T4 gearing): each tier starts at
+ * least ~4× above the previous tier's most expensive item, and within a tier
+ * prices interpolate exponentially from `start` to `end`. Income is capped
+ * (~100 $GOLD/match, 500/day), so this makes:
+ *   T0 minutes · T1 hours · T2 days · T3 weeks · T4 months-to-years.
+ * Tune the two tables below if the economy should move.
  */
 import { loadGame, type GameCatalog } from '@fishio/game-core';
 
@@ -23,28 +25,64 @@ export interface GoldShopItem {
 }
 
 const PRICE_LADDER = [
-  5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 100, 125, 150, 175, 200, 250, 300, 350, 400, 450, 500,
-  600, 700, 800, 900, 1000, 1250, 1500, 1750, 2000, 2500, 3000, 4000, 5000,
+  10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 100, 125, 150, 175, 200, 250, 300, 400, 500, 600, 750, 1000, 1250,
+  1500, 2000, 2500, 3000, 4000, 5000, 7500, 10000, 12500, 15000, 20000, 25000, 30000, 40000, 50000, 60000,
+  75000, 100000, 125000, 150000, 200000, 250000, 300000, 400000, 500000, 600000, 750000, 1000000,
 ];
 
-const CATEGORY_CURVE: Record<GoldShopItemType, { start: number; end: number }> = {
-  weapon: { start: 10, end: 600 },
-  fish: { start: 10, end: 2500 },
-  hat: { start: 10, end: 150 },
+/** Per-tier [start, end] $GOLD ranges (T0 → T4). */
+const TIER_RANGES: Record<'weapon' | 'fish', ReadonlyArray<readonly [number, number]>> = {
+  weapon: [
+    [10, 25],
+    [100, 250],
+    [1000, 2500],
+    [10000, 50000],
+    [200000, 600000],
+  ],
+  fish: [
+    [10, 25],
+    [100, 250],
+    [1000, 2500],
+    [10000, 60000],
+    [250000, 1000000],
+  ],
 };
+
+/** Hats are cosmetic; keep them achievable. */
+const HAT_RANGE: readonly [number, number] = [10, 2500];
 
 function roundLadder(value: number): number {
   let best = PRICE_LADDER[0]!;
+  let bestDist = Math.abs(value - best);
   for (const step of PRICE_LADDER) {
-    if (Math.abs(step - value) < Math.abs(best - value)) best = step;
+    const dist = Math.abs(step - value);
+    if (dist < bestDist) {
+      best = step;
+      bestDist = dist;
+    }
   }
   return best;
 }
 
-/** Exponential progression between `start` and `end` for rank `index` of `total`. */
-export function priceForRank(index: number, total: number, start: number, end: number): number {
-  const t = total <= 1 ? 1 : index / (total - 1);
+/** Exponential interpolation between `start` and `end` for `index` of `count`. */
+function priceBetween(start: number, end: number, index: number, count: number): number {
+  const t = count <= 1 ? 1 : index / (count - 1);
   return roundLadder(start * Math.pow(end / start, t));
+}
+
+interface ShopEntry {
+  id: string;
+  name: string;
+  cost: number;
+}
+
+function collectEntries(table: Record<string, unknown>): ShopEntry[] {
+  return Object.entries(table ?? {})
+    .map(([id, raw]) => {
+      const entry = (raw ?? {}) as { cost?: unknown; name?: unknown };
+      return { id, name: String(entry.name ?? id), cost: Number(entry.cost ?? 0) };
+    })
+    .filter((entry) => Number.isFinite(entry.cost) && entry.cost > 0);
 }
 
 interface GoldShopCatalog {
@@ -61,34 +99,50 @@ export function goldShop(): GoldShopCatalog {
   const catalog: GameCatalog = loadGame().catalog();
   const items: GoldShopItem[] = [];
 
-  const collect = (type: GoldShopItemType, table: Record<string, unknown>) => {
-    const entries = Object.entries(table ?? {})
-      .map(([id, raw]) => {
-        const entry = (raw ?? {}) as { cost?: unknown; name?: unknown };
-        return { id, name: String(entry.name ?? id), cost: Number(entry.cost ?? 0) };
-      })
-      .filter((entry) => Number.isFinite(entry.cost) && entry.cost > 0)
-      .sort((a, b) => a.cost - b.cost);
-
-    const curve = CATEGORY_CURVE[type];
-    entries.forEach((entry, index) => {
-      items.push({
-        type,
-        id: entry.id,
-        name: entry.name,
-        costGold: entry.cost,
-        priceGold: priceForRank(index, entries.length, curve.start, curve.end),
-      });
+  const collectTiered = (type: 'weapon' | 'fish', table: Record<string, unknown>, tiers: string[][]) => {
+    const tierOf = new Map<string, number>();
+    tiers.forEach((list, tier) => {
+      for (const id of list) tierOf.set(id, tier);
     });
+
+    const groups = new Map<number, ShopEntry[]>();
+    for (const entry of collectEntries(table)) {
+      const tier = Math.min(tierOf.get(entry.id) ?? 0, TIER_RANGES[type].length - 1);
+      const list = groups.get(tier) ?? [];
+      list.push(entry);
+      groups.set(tier, list);
+    }
+
+    for (const [tier, list] of groups) {
+      list.sort((a, b) => a.cost - b.cost);
+      const [start, end] = TIER_RANGES[type][tier]!;
+      list.forEach((entry, index) => {
+        items.push({
+          type,
+          id: entry.id,
+          name: entry.name,
+          costGold: entry.cost,
+          priceGold: priceBetween(start, end, index, list.length),
+        });
+      });
+    }
   };
 
-  collect('fish', catalog.fishSkins);
-  collect('weapon', catalog.weaponSkins);
-  collect('hat', catalog.fishHats);
+  collectTiered('weapon', catalog.weaponSkins, catalog.weaponTiers ?? []);
+  collectTiered('fish', catalog.fishSkins, catalog.fishTiers ?? []);
 
-  items.sort(
-    (a, b) => a.type.localeCompare(b.type) || a.priceGold - b.priceGold || a.id.localeCompare(b.id),
-  );
+  const hats = collectEntries(catalog.fishHats).sort((a, b) => a.cost - b.cost);
+  hats.forEach((entry, index) => {
+    items.push({
+      type: 'hat',
+      id: entry.id,
+      name: entry.name,
+      costGold: entry.cost,
+      priceGold: priceBetween(HAT_RANGE[0], HAT_RANGE[1], index, hats.length),
+    });
+  });
+
+  items.sort((a, b) => a.type.localeCompare(b.type) || a.priceGold - b.priceGold || a.id.localeCompare(b.id));
   const byKey = new Map(items.map((item) => [`${item.type}:${item.id}`, item]));
   cached = { items, byKey };
   return cached;
@@ -127,7 +181,7 @@ export function upgradeDefs(): Map<string, UpgradeDef> {
 }
 
 /** Cost to go from `nextLevelIndex` (0-based) to the next upgrade level. */
-const UPGRADE_LADDER = [15, 30, 60, 120, 240];
+const UPGRADE_LADDER = [100, 400, 1500, 6000, 25000];
 
 export function upgradePriceFor(nextLevelIndex: number): number {
   if (nextLevelIndex < UPGRADE_LADDER.length) return UPGRADE_LADDER[nextLevelIndex]!;

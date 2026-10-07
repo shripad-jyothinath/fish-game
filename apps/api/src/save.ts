@@ -5,6 +5,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AuthGuard } from './auth.ts';
 import type { Store } from './db.ts';
+import { refreshPower } from './power.ts';
 
 const MAX_SAVE_BYTES = 512 * 1024;
 
@@ -37,6 +38,11 @@ export function registerSaveRoutes(app: FastifyInstance, store: Store, requireUs
     }
     const now = Date.now();
     store.upsertSave(userId, data, now);
+    try {
+      refreshPower(store, userId); // loadout changes affect combat power
+    } catch {
+      /* power is best-effort */
+    }
     return reply.send({ updatedAt: now });
   });
 }

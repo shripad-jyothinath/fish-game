@@ -9,13 +9,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { PrivateKey } from '@hiero-ledger/sdk';
+import { loadGame } from '@fishio/game-core';
 import { loadHederaSettings, type HederaSettings } from '../src/hedera/config.ts';
 import { decryptSecret, encryptSecret, type CustodyService } from '../src/hedera/custody.ts';
 import { openDatabase, type NftItemRow } from '../src/db.ts';
 import { loadDotEnv } from '../src/env.ts';
 import { decodeMemo, MirrorClient } from '../src/hedera/mirror.ts';
 import { calculateGoldReward, RewardService } from '../src/hedera/rewards.ts';
-import { findGoldShopItem, goldShop, priceForRank, upgradePriceFor } from '../src/hedera/shop.ts';
+import { refreshPower } from '../src/power.ts';
+import { findGoldShopItem, goldShop, upgradePriceFor } from '../src/hedera/shop.ts';
 import type { TokenService } from '../src/hedera/token.ts';
 import { signInternalBody, signRoomTicket, verifyRoomTicket } from '../src/hedera/tickets.ts';
 import { isValidHederaAccountId, stripChecksum, verifyMessageSignature, WalletService } from '../src/hedera/wallet.ts';
@@ -34,8 +36,6 @@ const settings: HederaSettings = {
   goldSymbol: 'GOLD',
   goldDecimals: 2,
   goldInitialSupply: 1000,
-  rewardDailyCap: 500,
-  rewardMatchCap: 100,
   matchCooldownMs: 10000,
   editionLimits: { golden_leviathan: 1 },
   autoWallets: true,
@@ -65,30 +65,66 @@ test('hedera account ids validate and strip checksums', () => {
   assert.equal(isValidHederaAccountId(''), false);
 });
 
-test('gold rewards scale with play and hit the per-match cap', () => {
-  const idle = calculateGoldReward(
-    { mode: 'classic', score: 0, kills: 0, level: 1, food: 0, chests: 0, kingTime: 0, durationMs: 0 },
-    settings,
-  );
+test('gold rewards scale with score, kills and level (uncapped)', () => {
+  const idle = calculateGoldReward({
+    mode: 'classic',
+    score: 0,
+    kills: 0,
+    level: 1,
+    food: 0,
+    chests: 0,
+    kingTime: 0,
+    durationMs: 0,
+  });
   assert.equal(idle, 0);
 
-  const mid = calculateGoldReward(
-    { mode: 'classic', score: 300, kills: 2, level: 3, food: 0, chests: 0, kingTime: 0, durationMs: 0 },
-    settings,
-  );
-  assert.equal(mid, 2 + 6 + 2); // score/150 + kills*3 + (level-1)
+  const lvl4 = calculateGoldReward({
+    mode: 'classic',
+    score: 1500,
+    kills: 5,
+    level: 4,
+    food: 0,
+    chests: 0,
+    kingTime: 0,
+    durationMs: 0,
+  });
+  assert.equal(lvl4, 15 + 5 * 6 + 24, 'score/100 + kills*(5+level/3) + (level-1)*8');
 
-  const frenzy = calculateGoldReward(
-    { mode: 'frenzy', score: 300, kills: 2, level: 3, food: 0, chests: 0, kingTime: 0, durationMs: 0 },
-    settings,
-  );
-  assert.equal(frenzy, Math.floor((2 + 6 + 2) * 1.25));
+  const lvl20 = calculateGoldReward({
+    mode: 'classic',
+    score: 15_000,
+    kills: 25,
+    level: 20,
+    food: 0,
+    chests: 10,
+    kingTime: 0,
+    durationMs: 0,
+  });
+  assert.ok(lvl20 > lvl4 * 8, `higher levels earn much more (${lvl4} -> ${lvl20})`);
 
-  const capped = calculateGoldReward(
-    { mode: 'classic', score: 10_000_000, kills: 1000, level: 100, food: 0, chests: 9999, kingTime: 0, durationMs: 0 },
-    settings,
-  );
-  assert.equal(capped, settings.rewardMatchCap);
+  const frenzy = calculateGoldReward({
+    mode: 'frenzy',
+    score: 1000,
+    kills: 10,
+    level: 5,
+    food: 0,
+    chests: 0,
+    kingTime: 0,
+    durationMs: 0,
+  });
+  assert.equal(frenzy, Math.floor((10 + 60 + 32) * 1.25), 'frenzy pays 1.25x');
+
+  const huge = calculateGoldReward({
+    mode: 'classic',
+    score: 10_000_000,
+    kills: 1000,
+    level: 100,
+    food: 0,
+    chests: 9999,
+    kingTime: 0,
+    durationMs: 0,
+  });
+  assert.ok(huge > 100_000, `no per-match cap (${huge})`);
 });
 
 test('env loader reads KEY=VALUE files without overriding existing vars', () => {
@@ -223,35 +259,39 @@ test('limited editions reserve atomically and free slots on failure', () => {
   store.close();
 });
 
-test('$GOLD shop prices follow the progression curve', () => {
-  assert.equal(priceForRank(0, 24, 10, 600), 10);
-  assert.equal(priceForRank(23, 24, 10, 600), 600);
-  assert.equal(priceForRank(0, 23, 10, 2500), 10);
-  assert.equal(priceForRank(22, 23, 10, 2500), 2500);
-
+test('$GOLD shop prices escalate hard by tier', () => {
   const { items } = goldShop();
   assert.ok(items.length > 50, `catalog has sellable items (${items.length})`);
-  for (const item of items) {
-    assert.ok(item.priceGold >= 5 && item.priceGold <= 5000, `${item.type}:${item.id} in price range`);
-    assert.ok(item.costGold > 0, `${item.type}:${item.id} has a real legacy cost`);
+  const byKey = new Map(items.map((item) => [`${item.type}:${item.id}`, item]));
+  const priceOf = (type: string, id: string) => byKey.get(`${type}:${id}`)!.priceGold;
+
+  const cat = loadGame().catalog();
+  for (const type of ['weapon', 'fish'] as const) {
+    const tiers = type === 'weapon' ? cat.weaponTiers : cat.fishTiers;
+    tiers.forEach((ids, tier) => {
+      const priced = ids.filter((id) => byKey.has(`${type}:${id}`));
+      assert.ok(priced.length > 0, `${type} T${tier} has sellable items`);
+      const prices = priced.map((id) => priceOf(type, id));
+      if (tier > 0) {
+        const prevMax = Math.max(
+          ...tiers[tier - 1]!.filter((id) => byKey.has(`${type}:${id}`)).map((id) => priceOf(type, id)),
+        );
+        const thisMin = Math.min(...prices);
+        assert.ok(thisMin > prevMax * 3, `${type} T${tier} starts well above T${tier - 1} (${thisMin} vs ${prevMax})`);
+      }
+    });
+    const t0 = tiers[0]!.filter((id) => byKey.has(`${type}:${id}`)).map((id) => priceOf(type, id));
+    assert.equal(Math.min(...t0), 10, `${type} T0 entry price`);
   }
 
-  for (const type of ['fish', 'weapon', 'hat']) {
-    const prices = items.filter((item) => item.type === type).map((item) => item.priceGold);
-    assert.equal(prices[0], 10, `${type} entry price`);
-    for (let i = 1; i < prices.length; i++) {
-      assert.ok(prices[i]! >= prices[i - 1]!, `${type} prices are monotonic`);
-    }
-  }
+  assert.equal(priceOf('weapon', 'meteor_maul'), 600000, 'apex weapon is a long-term goal');
+  assert.equal(priceOf('fish', 'golden_leviathan'), 1000000, 'apex fish is a multi-year goal');
 
-  const topFish = items.filter((item) => item.type === 'fish').at(-1);
-  assert.equal(topFish?.priceGold, 2500, 'top fish is a long-term goal');
+  const hatPrices = items.filter((item) => item.type === 'hat').map((item) => item.priceGold);
+  assert.ok(Math.max(...hatPrices) <= 5000, 'cosmetic hats stay achievable');
 
-  const weapon = items.find((item) => item.type === 'weapon');
-  assert.ok(weapon, 'weapons are sellable');
-  assert.deepEqual(findGoldShopItem(weapon.type, weapon.id), weapon, 'lookup by type+id');
-  assert.equal(findGoldShopItem('weapon', 'definitely_not_real'), null);
   assert.equal(findGoldShopItem('fish', 'baby_shark'), null, 'default fish is not for sale');
+  assert.equal(findGoldShopItem('weapon', 'definitely_not_real'), null);
 });
 
 test('entitlements reserve atomically, activate, and free slots on delete', () => {
@@ -321,7 +361,7 @@ test('$GOLD ledger credits, spends, and summarises', () => {
   store.close();
 });
 
-test('match rewards credit the ledger and respect the daily cap', async () => {
+test('match rewards credit the ledger without caps', async () => {
   const store = openDatabase(':memory:');
   store.createUser({
     id: 'u1',
@@ -332,16 +372,77 @@ test('match rewards credit the ledger and respect the daily cap', async () => {
     created_at: 1,
     last_login_at: null,
   });
-  const rewards = new RewardService(store, { ...settings, matchCooldownMs: 0, rewardDailyCap: 30 }, undefined, undefined);
+  const rewards = new RewardService(store, { ...settings, matchCooldownMs: 0 }, undefined, undefined);
   const stats = { mode: 'classic', score: 1500, kills: 5, level: 4, food: 0, chests: 0, kingTime: 0, durationMs: 0 } as const;
 
   const first = await rewards.recordMatch('u1', stats);
-  assert.equal(first.reward.amount, 28, 'score/150 + 3/kill + level bonus');
-  assert.equal(store.goldBalance('u1'), 28, 'credited immediately');
+  assert.equal(first.reward.amount, 69, 'score/100 + kills*(5+level/3) + (level-1)*8');
+  assert.equal(store.goldBalance('u1'), 69, 'credited immediately');
 
   const second = await rewards.recordMatch('u1', stats);
-  assert.equal(second.reward.amount, 2, 'daily cap limits the second match');
-  assert.equal(store.goldBalance('u1'), 30);
+  assert.equal(second.reward.amount, 69, 'no daily cap');
+  assert.equal(store.goldBalance('u1'), 138);
+  store.close();
+});
+
+test('match cooldown reports how long to wait', async () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  const rewards = new RewardService(store, { ...settings, matchCooldownMs: 5000 }, undefined, undefined);
+  const stats = { mode: 'classic', score: 150, kills: 0, level: 1, food: 0, chests: 0, kingTime: 0, durationMs: 0 } as const;
+
+  await rewards.recordMatch('u1', stats);
+  try {
+    await rewards.recordMatch('u1', stats);
+    assert.fail('expected a cooldown error');
+  } catch (err) {
+    const coded = err as Error & { code?: string; retryAfterMs?: number };
+    assert.equal(coded.code, 'match_cooldown');
+    assert.ok(coded.retryAfterMs !== undefined && coded.retryAfterMs > 0 && coded.retryAfterMs <= 5000);
+  }
+  store.close();
+});
+
+test('combat power combines loadout tiers, upgrades and best level', () => {
+  const store = openDatabase(':memory:');
+  store.createUser({
+    id: 'u1',
+    email: 'u1@example.com',
+    username: 'u1',
+    username_lower: 'u1',
+    password_hash: 'x',
+    created_at: 1,
+    last_login_at: null,
+  });
+  store.upsertSave(
+    'u1',
+    JSON.stringify({
+      selectedWeapon: 'meteor_maul',
+      selectedFish: 'golden_leviathan',
+      upgrades: { speed_boost: 5, stamina_cap: 5, stamina_regen: 5, starting_size: 5, magnet_radius: 5 },
+    }),
+    Date.now(),
+  );
+  store.bumpPlayerStats('u1', { kills: 10, food: 100, score: 10_000, level: 20, kingTime: 0 }, Date.now());
+
+  const power = refreshPower(store, 'u1');
+  assert.equal(power, 6000 + 5000 + 25 * 80 + 20 * 25, 'tier power + upgrades + best level');
+
+  const powerRows = store.listPowerLeaderboard(10);
+  assert.equal(powerRows[0]?.username, 'u1');
+  assert.equal(powerRows[0]?.power, power);
+
+  const goldRows = store.listGoldLeaderboard(10);
+  assert.equal(goldRows[0]?.username, 'u1');
+  assert.equal(goldRows[0]?.gold, 0);
   store.close();
 });
 
@@ -356,7 +457,7 @@ test('item and upgrade purchases are atomic and priced server-side', () => {
     created_at: 1,
     last_login_at: null,
   });
-  store.creditGold('u1', 1000, 'match_reward', null);
+  store.creditGold('u1', 100_000, 'match_reward', null);
 
   const item = goldShop().items.find((entry) => entry.priceGold <= 50)!;
   const entitlement = {
@@ -371,7 +472,7 @@ test('item and upgrade purchases are atomic and priced server-side', () => {
     created_at: 1,
   };
   assert.equal(store.purchaseItemAtomic('u1', entitlement, item.priceGold), 'ok');
-  assert.equal(store.goldBalance('u1'), 1000 - item.priceGold);
+  assert.equal(store.goldBalance('u1'), 100_000 - item.priceGold);
   assert.ok(store.findEntitlement('u1', item.type, item.id), 'entitlement granted');
   assert.equal(store.purchaseItemAtomic('u1', { ...entitlement, id: 'e2' }, item.priceGold), 'owned');
   assert.equal(
@@ -383,7 +484,7 @@ test('item and upgrade purchases are atomic and priced server-side', () => {
   const up1 = store.purchaseUpgradeAtomic('u1', 'speed_boost', 5, (level) => upgradePriceFor(level));
   assert.equal(up1.result, 'ok');
   assert.equal(up1.level, 1);
-  assert.equal(up1.price, 15, 'first level costs the ladder price');
+  assert.equal(up1.price, 100, 'first level costs the ladder price');
   assert.equal(store.upgradeLevels('u1').speed_boost, 1);
   for (let i = 0; i < 4; i++) store.purchaseUpgradeAtomic('u1', 'speed_boost', 5, (level) => upgradePriceFor(level));
   assert.equal(store.upgradeLevels('u1').speed_boost, 5);
@@ -480,27 +581,39 @@ test('reward endpoints are once-per-day and purchases debit the ledger', async (
     const stage2 = await app.inject({ ...auth, method: 'POST', url: '/api/v1/me/reward/stage', payload: { level: 1 } });
     assert.equal(stage2.statusCode, 409, 'stage rewards are once');
 
-    // Server-authored match intake credits the ledger.
+    // Server-authored match intake credits the ledger (twice, cooldown cleared).
     const userId = (reg.json() as { user: { id: string } }).user.id;
     const body = JSON.stringify({
       userId,
       stats: { mode: 'classic', score: 1500, kills: 5, level: 4, durationMs: 1000 },
     });
+    const intakeHeaders = (signature: string) => ({
+      'content-type': 'application/vnd.fishio.intake+json',
+      'x-fishio-signature': signature,
+    });
     const intake = await app.inject({
       method: 'POST',
       url: '/internal/matches',
       payload: body,
-      headers: { 'content-type': 'application/vnd.fishio.intake+json', 'x-fishio-signature': signInternalBody('reward-secret', body) },
+      headers: intakeHeaders(signInternalBody('reward-secret', body)),
     });
     assert.equal(intake.statusCode, 201);
+    await new Promise((resolve) => setTimeout(resolve, 3100)); // clear the match cooldown
+    const intake2 = await app.inject({
+      method: 'POST',
+      url: '/internal/matches',
+      payload: body,
+      headers: intakeHeaders(signInternalBody('reward-secret', body)),
+    });
+    assert.equal(intake2.statusCode, 201);
 
     const gold = await app.inject({ ...auth, method: 'GET', url: '/api/v1/hedera/gold' });
     assert.equal(gold.statusCode, 200);
     const balance = (gold.json() as { balance: number }).balance;
-    assert.ok(balance >= 43, `balance from rewards + match (${balance})`);
+    assert.ok(balance >= 150, `balance from rewards + two matches (${balance})`);
     assert.equal((gold.json() as { earned: number }).earned, balance, 'earned equals credits so far');
 
-    const item = goldShop().items.find((entry) => entry.priceGold <= balance)!;
+    const item = goldShop().items.find((entry) => entry.priceGold <= 25)!;
     const buy = await app.inject({
       ...auth,
       method: 'POST',
@@ -526,10 +639,22 @@ test('reward endpoints are once-per-day and purchases debit the ledger', async (
     });
     assert.equal(upg.statusCode, 200);
     assert.equal((upg.json() as { level: number }).level, 1);
+    assert.equal((upg.json() as { price: number }).price, 100, 'first upgrade level costs 100 $GOLD');
 
     const levels = await app.inject({ ...auth, method: 'GET', url: '/api/v1/me/upgrades' });
     assert.equal(levels.statusCode, 200);
     assert.equal((levels.json() as { levels: Record<string, number> }).levels.speed_boost, 1);
+
+    const goldLb = await app.inject({ method: 'GET', url: '/api/v1/leaderboard?type=gold' });
+    assert.equal(goldLb.statusCode, 200);
+    const goldEntries = (goldLb.json() as { entries: Array<{ username: string; gold: number }> }).entries;
+    const mine = goldEntries.find((entry) => entry.username === 'reward1');
+    assert.ok(mine && mine.gold >= 40, `gold leaderboard tracks remaining balance (${mine ? mine.gold : 'missing'})`);
+
+    const powerLb = await app.inject({ method: 'GET', url: '/api/v1/leaderboard?type=power' });
+    assert.equal(powerLb.statusCode, 200);
+    const powerEntries = (powerLb.json() as { entries: Array<{ username: string; power: number }> }).entries;
+    assert.ok(powerEntries.some((entry) => entry.username === 'reward1'), 'power leaderboard includes the player');
   } finally {
     await app.close();
     fs.rmSync(dbPath, { force: true });

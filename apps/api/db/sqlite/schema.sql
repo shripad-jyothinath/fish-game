@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS player_stats (
     high_score      INTEGER NOT NULL DEFAULT 0,
     best_level      INTEGER NOT NULL DEFAULT 1,
     total_king_time INTEGER NOT NULL DEFAULT 0,
+    power           INTEGER NOT NULL DEFAULT 0,
     updated_at      INTEGER NOT NULL
 );
 

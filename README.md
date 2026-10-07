@@ -103,11 +103,29 @@ offline mode (matches are still recorded locally). To go live:
 **Currency: `$GOLD` only (testnet).** Signed-in players hold an in-game `$GOLD`
 balance on the server (append-only ledger, `GET /api/v1/hedera/gold`): matches, daily
 gifts, the lucky wheel (one spin/day) and stage clears credit it instantly; the Armory
-and Workshop spend it instantly (server-priced: weapons 10–600, fish 10–2,500, hats
-10–150, upgrades 15/30/60/120/240). **Withdraw** moves it on-chain to the player's
-custodial wallet (`POST /api/v1/hedera/gold/withdraw`, HashScan link); **Deposit**
-brings it back (`POST /api/v1/hedera/gold/deposit`). NFTs mint from owned items as
-before. Guests keep a clearly-separate practice 💰 that can never convert.
+and Workshop spend it instantly. **Rewards are uncapped and scale with level**
+(`score/100 + kills×(5+level/3) + (level−1)×8 + chests×4`), while prices are
+**tier-based** with ~4× jumps, so grinding levels raises income and top gear still
+takes months:
+
+| Tier | Weapons | Fish |
+|---|---|---|
+| T0 | 10–25 | 10–25 |
+| T1 | 100–250 | 100–250 |
+| T2 | 1k–2.5k | 1k–2.5k |
+| T3 | 10k–50k | 10k–60k |
+| T4 | 200k–600k | 250k–1M |
+
+Hats stay cosmetic (10–2,500). Workshop upgrades: 100/400/1,500/6,000/25,000 per level.
+**Withdraw** moves `$GOLD` on-chain to the player's custodial wallet
+(`POST /api/v1/hedera/gold/withdraw`, HashScan link); **Deposit** brings it back
+(`POST /api/v1/hedera/gold/deposit`). NFTs mint from owned items as before. Guests keep
+a clearly-separate practice 💰 that can never convert.
+
+**Leaderboards & power:** `GET /api/v1/leaderboard?type=score|gold|power` —
+Score, **most `$GOLD`**, and **Combat Power** (weapon tier + fish tier + workshop
+levels + best match level; shown on the menu and in the account panel). The in-game
+modal has the three tabs.
 
 **M4 — online matches count:** signed-in players get a short-lived signed **room ticket**
 (`POST /api/v1/hedera/room-ticket`) that travels in the arena `hello`. When they die, the

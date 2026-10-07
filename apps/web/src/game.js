@@ -683,22 +683,19 @@ class GameEngine {
 
             const newTier = Math.min(capTier, curTier + 1);
             const wList = (typeof WEAPON_TIERS !== 'undefined' && WEAPON_TIERS[newTier]) || [];
-            const fList = (typeof FISH_TIERS !== 'undefined' && FISH_TIERS[newTier]) || [];
             if (wList.length) {
                 bot.weaponId = wList[Math.floor(Math.random() * wList.length)];
                 bot.weapon = WEAPON_SKINS[bot.weaponId] || bot.weapon;
             }
-            if (fList.length) {
-                bot.skinId = fList[Math.floor(Math.random() * fList.length)];
-                bot.skin = FISH_SKINS[bot.skinId] || bot.skin;
-                bot.baseSpeed = 4.4 * (bot.skin.stats && bot.skin.stats.speed || 1.0);
-                bot.turnSpeed = 0.14 * (bot.skin.stats && bot.skin.stats.turn || 1.0);
-                bot.maxStamina = 100 * (bot.skin.stats && bot.skin.stats.boost || 1.0);
-            }
+            // Species stays fixed for the whole match — a leveling bot upgrades
+            // its blade, it does not morph into another fish.
             bot.gearUpLevel = bot.level + 3;
             bot.updateDimensions();
             bot.invulnerableTimer = Math.max(bot.invulnerableTimer, 0.6);
-            if (this.particles) this.particles.addShockwave(bot.x, bot.y, bot.radius * 2.2, '#ffd700');
+            if (this.particles) {
+                this.particles.addShockwave(bot.x, bot.y, bot.radius * 2.2, '#ffd700');
+                this.particles.addFloatingText(bot.x, bot.y - bot.radius - 20, '⚔️ UPGRADED!', '#ffd700', 16);
+            }
         }
     }
 

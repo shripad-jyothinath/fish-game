@@ -113,6 +113,7 @@
                         <span>High Score: <b id="menuHighScore">0</b></span>
                         <span>Total Kills: <b id="menuTotalKills">0</b></span>
                         <span>Gold: <b id="menuGold">0 💰</b></span>
+                        <span>Power: <b id="menuPower">—</b></span>
                     </div>
                 </div>
 
@@ -394,8 +395,13 @@
         <div id="leaderboardModal" class="modal-backdrop hidden">
             <div class="modal-card" style="max-width: 640px;">
                 <div class="modal-header">
-                    <div class="modal-title">🌐 Global Leaderboard</div>
+                    <div class="modal-title">🌐 Leaderboards</div>
                     <button class="modal-close" onclick="closeLeaderboard()">&times;</button>
+                </div>
+                <div style="display: flex; gap: 8px; padding: 0 20px 12px;">
+                    <button class="shop-tab active" id="lbTabScore" onclick="openLeaderboard('score')">🏆 Score</button>
+                    <button class="shop-tab" id="lbTabGold" onclick="openLeaderboard('gold')">🪙 $GOLD</button>
+                    <button class="shop-tab" id="lbTabPower" onclick="openLeaderboard('power')">⚡ Power</button>
                 </div>
                 <div class="leaderboard-body" id="leaderboardBody">
                     <div class="lb-empty">Loading…</div>

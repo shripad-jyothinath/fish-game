@@ -102,6 +102,24 @@ may be in flight (npm install, sim run) — verify before assuming.
 > withdraw), legacy payout totals. Tests: API 22/22 (ledger math, atomic purchase/upgrade,
 > reward endpoints once-per-day, withdraw refund) + room 15/15. Deployed & live; E2E:
 > match → ledger credit → item/upgrade purchase → withdraw on-chain → deposit back.
+>
+> **Update (economy v2 + playtest fixes):** prices are now **tier-based** (T0 10–25 ·
+> T1 100–250 · T2 1k–2.5k · T3 10k–30k · T4 100k–400k; hats 10–2,500; upgrades
+> 50/150/400/1k/2.5k) so endgame is months-to-years at the capped income. Match
+> cooldown lowered to 3s and now returns `retryAfterMs`; the client auto-retries once
+> and shows friendly text. Rewards report `status: 'credited'` (no more "pending"
+> wording). **Bots no longer change species mid-match** — `updateBotGear` upgrades the
+> weapon only (regression test in `sim.test.js`); online clients also re-sync remote
+> cosmetics from snapshots (outfit changes between lives show correctly).
+>
+> **Update (economy v2 — uncapped + leaderboards + power):** rewards are **uncapped** and
+> scale with level (`score/100 + kills*(5+level/3) + (level-1)*8 + chests*4`; frenzy ×1.25);
+> tier prices raised (T3 10k–60k, T4 200k–1M; Leviathan = 1,000,000) and upgrades
+> 100/400/1.5k/6k/25k. New **combat power** (`src/power.ts`: weapon tier + fish tier +
+> workshop levels + best match level ×25) recomputed on save upload, match record and
+> upgrade purchase; surfaced in the menu, account panel and a new leaderboard. Leaderboards:
+> `GET /api/v1/leaderboard?type=score|gold|power` (gold = current in-game balance) with
+> three tabs in the client modal. Match cooldown message stays friendly (3s + auto-retry).
 
 ---
 

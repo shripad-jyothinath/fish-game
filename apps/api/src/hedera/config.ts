@@ -17,8 +17,6 @@ export interface HederaSettings {
   goldSymbol: string;
   goldDecimals: number;
   goldInitialSupply: number;
-  rewardDailyCap: number;
-  rewardMatchCap: number;
   matchCooldownMs: number;
   /** Per-item mint caps: itemId → max copies in existence. */
   editionLimits: Record<string, number>;
@@ -84,9 +82,7 @@ export function loadHederaSettings(env: NodeJS.ProcessEnv = process.env): Hedera
     goldSymbol: env.HEDERA_GOLD_SYMBOL ?? 'GOLD',
     goldDecimals: Math.min(8, num(env.HEDERA_GOLD_DECIMALS, 2)),
     goldInitialSupply: num(env.HEDERA_GOLD_INITIAL_SUPPLY, 1_000_000),
-    rewardDailyCap: num(env.HEDERA_REWARD_DAILY_CAP, 500),
-    rewardMatchCap: num(env.HEDERA_REWARD_MATCH_CAP, 100),
-    matchCooldownMs: num(env.HEDERA_MATCH_COOLDOWN_MS, 10_000),
+    matchCooldownMs: num(env.HEDERA_MATCH_COOLDOWN_MS, 3_000),
     editionLimits: parseEditionLimits(env.HEDERA_EDITION_LIMITS),
     autoWallets: env.HEDERA_AUTO_WALLETS !== 'false',
     mirrorBaseUrl: (env.HEDERA_MIRROR_URL ?? '').trim() || MIRROR_BASE[network],

@@ -9,6 +9,7 @@
  * is acceptable for testnet play; multiplayer room servers make it exact.
  */
 import { randomUUID } from 'node:crypto';
+import { refreshPower } from '../power.ts';
 import type { Store } from '../db.ts';
 import type { HederaSettings } from './config.ts';
 import { hashscanTxUrl } from './config.ts';
@@ -34,7 +35,7 @@ export interface MatchRecordResult {
   score: number;
   kills: number;
   level: number;
-  reward: { amount: number; status: 'pending'; dailyRemaining: number };
+  reward: { amount: number; status: 'credited'; dailyRemaining?: number };
   receipt: {
     status: 'submitted' | 'failed' | 'disabled';
     topicId: string | null;
@@ -46,14 +47,16 @@ export interface MatchRecordResult {
 
 const MATCH_COOLDOWN_CODE = 'match_cooldown';
 
-export function calculateGoldReward(stats: MatchStats, settings: HederaSettings): number {
-  const base = Math.floor(stats.score / 150);
-  const killBonus = stats.kills * 3;
-  const levelBonus = Math.max(0, stats.level - 1);
-  const chestBonus = stats.chests * 2;
+export function calculateGoldReward(stats: MatchStats): number {
+  // Uncapped and level-scaling: grinding levels raises income, and prices rise
+  // faster still — top-tier gear stays a long-term goal without hard caps.
+  const level = Math.max(1, Math.floor(stats.level));
+  const base = Math.floor(stats.score / 100);
+  const killBonus = stats.kills * (5 + Math.floor(level / 3));
+  const levelBonus = (level - 1) * 8;
+  const chestBonus = stats.chests * 4;
   const modeMultiplier = stats.mode === 'frenzy' ? 1.25 : 1;
-  const total = Math.floor((base + killBonus + levelBonus + chestBonus) * modeMultiplier);
-  return Math.max(0, Math.min(settings.rewardMatchCap, total));
+  return Math.max(0, Math.floor((base + killBonus + levelBonus + chestBonus) * modeMultiplier));
 }
 
 function startOfUtcDay(now = Date.now()): number {
@@ -79,8 +82,12 @@ export class RewardService {
     const now = Date.now();
     const last = this.store.latestMatchAt(userId);
     if (last && now - last < this.settings.matchCooldownMs) {
-      const error = new Error('Too many match submissions. Wait a few seconds and try again.');
-      (error as Error & { code?: string }).code = MATCH_COOLDOWN_CODE;
+      const error = new Error('Just a moment — the previous match is still settling.') as Error & {
+        code?: string;
+        retryAfterMs?: number;
+      };
+      error.code = MATCH_COOLDOWN_CODE;
+      error.retryAfterMs = this.settings.matchCooldownMs - (now - last);
       throw error;
     }
 
@@ -120,10 +127,7 @@ export class RewardService {
       }
     }
 
-    const earned = calculateGoldReward(stats, this.settings);
-    const spentToday = this.store.sumGoldByReasonSince(userId, 'match_reward', startOfUtcDay(now));
-    const remaining = Math.max(0, this.settings.rewardDailyCap - spentToday);
-    const amount = Math.min(earned, remaining);
+    const amount = calculateGoldReward(stats);
 
     this.store.insertMatch({
       id: matchId,
@@ -144,6 +148,11 @@ export class RewardService {
       created_at: now,
     });
     this.store.bumpPlayerStats(userId, stats, now);
+    try {
+      refreshPower(this.store, userId);
+    } catch (err) {
+      console.warn('[power] refresh failed:', err);
+    }
 
     // $GOLD is credited to the in-game ledger immediately; withdrawing to the
     // player's Hedera wallet is a separate, explicit action.
@@ -158,7 +167,7 @@ export class RewardService {
       score: stats.score,
       kills: stats.kills,
       level: stats.level,
-      reward: { amount, status: 'pending', dailyRemaining: Math.max(0, remaining - amount) },
+      reward: { amount, status: 'credited' },
       receipt,
     };
   }
