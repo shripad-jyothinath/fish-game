@@ -37,6 +37,8 @@ export interface FishHandle {
   isDead: boolean;
   isBoss?: boolean;
   invulnerableTimer: number;
+  /** True while the invulnerability is spawn protection (cleared by attacking). */
+  spawnProtected: boolean;
   hasShield: boolean;
   powerupTimers: Record<string, number>;
 

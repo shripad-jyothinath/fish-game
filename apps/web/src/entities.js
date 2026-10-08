@@ -77,6 +77,9 @@ class Fish {
         this.recoil = 0;
         this.recoilAngle = 0;
         this.invulnerableTimer = 0;
+        // Spawn protection is a *kind* of invulnerability: attacking clears it,
+        // while god-mode / shield-break grace stay untouched.
+        this.spawnProtected = false;
 
         // Apply initial upgrades if player
         if (!isBot && window.shopManager) {
@@ -289,6 +292,7 @@ class Fish {
         // Invulnerability
         if (this.invulnerableTimer > 0) {
             this.invulnerableTimer = Math.max(0, this.invulnerableTimer - 0.016 * dt);
+            if (this.invulnerableTimer === 0) this.spawnProtected = false;
         }
 
         // Excalibur Passive Holy Radiance

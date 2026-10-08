@@ -486,6 +486,7 @@ export class Room {
     // Spawn protection, same as offline practice. Landing a hit clears it
     // (handled in the shared collision code), so it can't be abused to farm.
     fish.invulnerableTimer = SPAWN_PROTECTION_SECONDS;
+    fish.spawnProtected = true;
 
     this.game.bots.push(fish);
     this.game.botControllers.push(this.makeController(player));

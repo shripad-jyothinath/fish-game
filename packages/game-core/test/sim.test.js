@@ -215,10 +215,12 @@ test('spawn protection prevents death but not kills, and attacking clears it', (
   // Protected attacker can kill, but loses protection by attacking.
   bot.invulnerableTimer = 0;
   player.invulnerableTimer = 3.5;
+  player.spawnProtected = true;
   parkUnderBlade(player, bot);
   g.handleCollisions([player, bot]);
   assert.equal(bot.isDead, true, 'protected attacker lands the kill');
   assert.equal(player.invulnerableTimer, 0, 'attacking clears the attacker protection');
+  assert.equal(player.spawnProtected, false, 'spawn protection flag cleared');
 });
 
 test('bots keep their species while upgrading weapons mid-match', () => {

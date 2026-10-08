@@ -535,6 +535,7 @@ class GameEngine {
             this.shop.selectedHat
         );
         this.player.invulnerableTimer = 3.5;
+        this.player.spawnProtected = true;
 
         // Immediate camera alignment
         this.camera.x = startX;
@@ -729,6 +730,7 @@ class GameEngine {
             this.shop.selectedHat
         );
         this.player.invulnerableTimer = 3.5;
+        this.player.spawnProtected = true;
 
         // Immediate camera alignment to prevent blank screen
         this.camera.x = startX;
@@ -787,6 +789,7 @@ class GameEngine {
 
         const bot = new Fish(bx, by, botName, botSkin, botWeapon, true, botHat);
         bot.invulnerableTimer = 1.5;
+        bot.spawnProtected = true;
         this.bots.push(bot);
         this.botControllers.push(new BotController(bot));
     }
@@ -813,6 +816,7 @@ class GameEngine {
         boss.isBoss = true;
         boss.bossRewardGold = choice.rewardGold;
         boss.invulnerableTimer = 2.0;
+        boss.spawnProtected = true;
         boss.updateDimensions();
 
         this.bots.push(boss);
@@ -1256,9 +1260,14 @@ class GameEngine {
                     }
 
                     if (f2Hit) {
-                        // Attacking drops your own spawn protection: safe mode is for
-                        // surviving contact, not for landing free kills.
-                        if (f1.invulnerableTimer > 0) f1.invulnerableTimer = 0;
+                        // Attacking drops your own *spawn* protection: safe mode is for
+                        // surviving contact, not for landing free kills. God-mode (huge
+                        // timer) and shield-break grace are not affected.
+                        if (f1.spawnProtected) {
+                            const spawnTimer = f1.invulnerableTimer <= 3.5 + 0.001;
+                            f1.spawnProtected = false;
+                            if (spawnTimer) f1.invulnerableTimer = 0;
+                        }
                         if (f2.hasShield) {
                             // Pop bubble shield!
                             f2.hasShield = false;
@@ -1293,7 +1302,11 @@ class GameEngine {
 
                     if (f1Hit) {
                         // Attacking drops your own spawn protection (see above).
-                        if (f2.invulnerableTimer > 0) f2.invulnerableTimer = 0;
+                        if (f2.spawnProtected) {
+                            const spawnTimer = f2.invulnerableTimer <= 3.5 + 0.001;
+                            f2.spawnProtected = false;
+                            if (spawnTimer) f2.invulnerableTimer = 0;
+                        }
                         if (f1.hasShield) {
                             f1.hasShield = false;
                             f1.invulnerableTimer = 1.0;
