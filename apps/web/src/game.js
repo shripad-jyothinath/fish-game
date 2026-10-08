@@ -1256,6 +1256,9 @@ class GameEngine {
                     }
 
                     if (f2Hit) {
+                        // Attacking drops your own spawn protection: safe mode is for
+                        // surviving contact, not for landing free kills.
+                        if (f1.invulnerableTimer > 0) f1.invulnerableTimer = 0;
                         if (f2.hasShield) {
                             // Pop bubble shield!
                             f2.hasShield = false;
@@ -1289,6 +1292,8 @@ class GameEngine {
                     }
 
                     if (f1Hit) {
+                        // Attacking drops your own spawn protection (see above).
+                        if (f2.invulnerableTimer > 0) f2.invulnerableTimer = 0;
                         if (f1.hasShield) {
                             f1.hasShield = false;
                             f1.invulnerableTimer = 1.0;

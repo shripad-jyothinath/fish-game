@@ -159,6 +159,41 @@ test('death sends match_end, respawn creates a new fish', () => {
   room.stop();
 });
 
+test('fresh spawns are protected, and attacking clears the attacker protection', () => {
+  const room = new Room(makeConfig());
+  const a = new FakeSocket();
+  const b = new FakeSocket();
+  const pa = joinOk(room, a, { name: 'Alice' });
+  const pb = joinOk(room, b, { name: 'Bob' });
+  const fa = pa.fish!;
+  const fb = pb.fish!;
+
+  assert.ok(fa.invulnerableTimer > 3, 'Alice spawns protected');
+  assert.ok(fb.invulnerableTimer > 3, 'Bob spawns protected');
+
+  const parkUnderBlade = (attacker: typeof fa, victim: typeof fa) => {
+    (victim as any).x = (attacker as any).bladeBase.x + (attacker as any).bladeLength * 0.5;
+    (victim as any).y = (attacker as any).bladeBase.y;
+    for (const joint of (victim as any).spine) {
+      joint.x = (victim as any).x;
+      joint.y = (victim as any).y;
+    }
+  };
+
+  // Blade vs protected body: victim survives.
+  parkUnderBlade(fa, fb);
+  room.game.handleCollisions([fa, fb]);
+  assert.equal(fb.isDead, false, 'protected victim survives');
+
+  // Blade vs vulnerable body: protected attacker kills, then loses protection.
+  fb.invulnerableTimer = 0;
+  parkUnderBlade(fa, fb);
+  room.game.handleCollisions([fa, fb]);
+  assert.equal(fb.isDead, true, 'protected attacker can kill');
+  assert.equal(fa.invulnerableTimer, 0, 'attacking cleared Alice protection');
+  room.stop();
+});
+
 function socketHasKill(socket: FakeSocket, victimId: string): boolean {
   return socket.sent.some((m) => Array.isArray(m.ev) && m.ev.some((e: any) => e.k === 'kill' && e.victimId === victimId));
 }

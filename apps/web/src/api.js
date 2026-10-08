@@ -78,8 +78,25 @@
     }
 
     // ===== save sync =====
+    // Guard against the classic cross-device race: before the first pull on a new
+    // device, the local default save (created by e.g. the account-name sync) must
+    // never be pushed over the account's real progress.
+    let saveSyncReady = false;
+
     function readLocalSave() {
         try { return JSON.parse(localStorage.getItem(SAVE_KEY) || 'null'); } catch { return null; }
+    }
+
+    function isFreshDefaultSave(save) {
+        if (!save) return true;
+        return (
+            (save.completedChallengeLevels || []).length === 0 &&
+            (save.unlockedChallengeLevel || 1) <= 1 &&
+            (save.highScore || 0) === 0 &&
+            (save.totalKills || 0) === 0 &&
+            (save.gold || 0) === 0 &&
+            (save.unlockedFish || []).length <= 1
+        );
     }
 
     function writeLocalSave(save) {
@@ -112,7 +129,9 @@
         if (remote.save) {
             const remoteAt = remote.updatedAt || 0;
             const localAt = (local && local.savedAt) || 0;
-            if (remoteAt >= localAt) {
+            // Prefer the account save unless this device truly has newer, real progress.
+            const localWins = local && !isFreshDefaultSave(local) && localAt > remoteAt;
+            if (!localWins) {
                 applySave(remote.save);
                 showToast('Progress loaded from your account');
             } else {
@@ -125,10 +144,12 @@
         } else {
             showToast('Account ready — progress will sync automatically');
         }
+        saveSyncReady = true;
+        syncPlayerName(); // persist the account name now that syncing is armed
     }
 
     function scheduleSaveSync() {
-        if (!currentUser) return;
+        if (!currentUser || !saveSyncReady) return;
         clearTimeout(syncTimer);
         syncTimer = setTimeout(() => { pushSave().catch(() => {}); }, SYNC_DEBOUNCE_MS);
     }
@@ -156,7 +177,9 @@
         if (currentUser) {
             if (sm.playerName !== currentUser.username) {
                 sm.playerName = currentUser.username;
-                if (typeof sm.save === 'function') sm.save();
+                // Only persist once the account save has been pulled — otherwise this
+                // write would carry a fresh timestamp and could overwrite real progress.
+                if (saveSyncReady && typeof sm.save === 'function') sm.save();
             }
             if (input) {
                 input.value = currentUser.username;
@@ -263,11 +286,12 @@
             const path = authMode === 'register' ? '/api/v1/auth/register' : '/api/v1/auth/login';
             const body = authMode === 'register' ? { email, username, password } : { email, password };
             const data = await request(path, { method: 'POST', body });
+            saveSyncReady = false; // hold pushes until the account save is pulled
             currentUser = data.user;
             closeAuthModal();
-            renderAccountBar();
             if (passwordEl) passwordEl.value = '';
             await pullSave();
+            renderAccountBar();
             await refreshGoldShop();
             showToast(`Welcome, ${currentUser.username}!`);
         } catch (err) {
@@ -283,6 +307,7 @@
     async function logout() {
         try { await request('/api/v1/auth/logout', { method: 'POST' }); } catch { /* already signed out */ }
         currentUser = null;
+        saveSyncReady = false;
         linkChallenge = null;
         renderAccountBar();
         renderHederaPanel();

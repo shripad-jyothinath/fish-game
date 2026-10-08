@@ -188,8 +188,37 @@ test('kill rewards scale with the killer level', () => {
 
   // Note: a kill's XP is applied before its gold, so the first kill already
   // pays the level-2 rate (24 × 1.08 ≈ 26). Assert the trend, not the exact number.
-  assert.ok(gain1 >= 24, `level-1 kill pays at least the base bounty (${gain1})`);
+  assert.equal(gain1 >= 24, true, `level-1 kill pays at least the base bounty (${gain1})`);
   assert.ok(gain2 > gain1 * 2, `high-level kills pay substantially more (${gain1} → ${gain2})`);
+});
+
+test('spawn protection prevents death but not kills, and attacking clears it', () => {
+  const h = loadGame({ seed: 51 });
+  const g = h.createGame();
+  g.startMatch('classic');
+  const player = g.player;
+  const bot = g.bots[0];
+
+  const parkUnderBlade = (attacker, victim) => {
+    victim.x = attacker.bladeBase.x + attacker.bladeLength * 0.5;
+    victim.y = attacker.bladeBase.y;
+    victim.spine.forEach((joint) => { joint.x = victim.x; joint.y = victim.y; });
+  };
+
+  // Protected victim survives.
+  player.invulnerableTimer = 0;
+  bot.invulnerableTimer = 3.5;
+  parkUnderBlade(player, bot);
+  g.handleCollisions([player, bot]);
+  assert.equal(bot.isDead, false, 'protected victim survives a blade hit');
+
+  // Protected attacker can kill, but loses protection by attacking.
+  bot.invulnerableTimer = 0;
+  player.invulnerableTimer = 3.5;
+  parkUnderBlade(player, bot);
+  g.handleCollisions([player, bot]);
+  assert.equal(bot.isDead, true, 'protected attacker lands the kill');
+  assert.equal(player.invulnerableTimer, 0, 'attacking clears the attacker protection');
 });
 
 test('bots keep their species while upgrading weapons mid-match', () => {

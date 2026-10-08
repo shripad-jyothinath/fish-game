@@ -27,6 +27,8 @@ import {
 } from './protocol.ts';
 import { signInternalBody, verifyRoomTicket } from './tickets.ts';
 
+const SPAWN_PROTECTION_SECONDS = 3.5;
+
 export interface ClientSocket {
   send(data: string): void;
   close(code?: number, reason?: string): void;
@@ -481,6 +483,9 @@ export class Room {
     });
     fish.netId = player.id;
     fish.applyWorkshopUpgrades(player.upgrades);
+    // Spawn protection, same as offline practice. Landing a hit clears it
+    // (handled in the shared collision code), so it can't be abused to farm.
+    fish.invulnerableTimer = SPAWN_PROTECTION_SECONDS;
 
     this.game.bots.push(fish);
     this.game.botControllers.push(this.makeController(player));

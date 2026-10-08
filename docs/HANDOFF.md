@@ -120,6 +120,17 @@ may be in flight (npm install, sim run) — verify before assuming.
 > upgrade purchase; surfaced in the menu, account panel and a new leaderboard. Leaderboards:
 > `GET /api/v1/leaderboard?type=score|gold|power` (gold = current in-game balance) with
 > three tabs in the client modal. Match cooldown message stays friendly (3s + auto-retry).
+>
+> **Update (bug hunt — cross-device saves + safe mode):** found and fixed a real
+> cross-device progress bug: on a new device, signing in wrote a fresh default local save
+> (the account-name sync) *before* the server save was pulled, and last-write-wins then
+> clobbered the account's real progress with defaults. Fixes in `apps/web/src/api.js`:
+> pushes are gated until the first pull (`saveSyncReady`), login pulls before rendering the
+> account bar, and `isFreshDefaultSave` refuses to let an empty save win. Spawn-protection
+> rules now match player expectations: protected fish **can** kill but attacking **clears
+> their own protection** (shared collision code), protected victims still can't be killed;
+> online rooms now grant the same 3.5 s protection (`room.ts` `SPAWN_PROTECTION_SECONDS`).
+> Tests: game-core 13 (new spawn-protection test), room 16 (new live-collision test).
 
 ---
 
