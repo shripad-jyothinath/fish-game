@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#062a52">
     <title>Fish IO: Be The King - Free Online Underwater .IO Game</title>
     <meta name="description" content="Play Fish IO: Be The King! Eat smaller fish & sushi, slice enemies with your blade, grow into a giant apex predator, and rule the ocean with the golden crown.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -239,6 +243,7 @@
             <!-- Mobile Touch Controls -->
             <div id="touchZone" class="touch-zone">DRAG TO STEER</div>
             <div id="touchBoostBtn" class="touch-boost-btn">BOOST</div>
+            <div id="rotateHint" class="rotate-hint">↻ Rotate your phone for a wider view</div>
         </div>
 
         <!-- ===== SHOP / LOCKER / WORKSHOP MODAL ===== -->
@@ -1223,7 +1228,10 @@
                 });
             }
 
-            if (window.ItemPreview3D) window.ItemPreview3D.hydrate(container);
+            // Skip per-item WebGL thumbnails on phones/tablets (many contexts,
+            // heavy on mobile GPUs); the 2D/emoji icons are already in the card.
+            const lightUi = window.matchMedia('(max-width: 900px), (pointer: coarse)').matches;
+            if (window.ItemPreview3D && !lightUi) window.ItemPreview3D.hydrate(container);
         }
 
         function equipFish(id) {

@@ -479,6 +479,40 @@ class GameEngine {
                 }
             });
         }
+
+        // Touch steering: drag anywhere on the arena to steer (dial anywhere).
+        // HUD buttons and touch controls sit above the canvas and keep their
+        // own handlers, so they are unaffected.
+        this.canvas.addEventListener('touchstart', (e) => {
+            const t = e.touches[0];
+            if (!t) return;
+            this.touchJoystick.active = true;
+            this.touchJoystick.startX = t.clientX;
+            this.touchJoystick.startY = t.clientY;
+            this.touchJoystick.currentX = t.clientX;
+            this.touchJoystick.currentY = t.clientY;
+            e.preventDefault();
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            if (!t || !this.touchJoystick.active) return;
+            this.touchJoystick.currentX = t.clientX;
+            this.touchJoystick.currentY = t.clientY;
+            const dx = this.touchJoystick.currentX - this.touchJoystick.startX;
+            const dy = this.touchJoystick.currentY - this.touchJoystick.startY;
+            if (this.player && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+                this.player.targetAngle = Math.atan2(dy, dx);
+            }
+            e.preventDefault();
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchend', (e) => {
+            if (e.touches.length === 0) this.touchJoystick.active = false;
+        });
+        this.canvas.addEventListener('touchcancel', () => {
+            this.touchJoystick.active = false;
+        });
     }
 
     resetPlayingField() {
